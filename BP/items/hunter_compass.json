@@ -1,0 +1,26 @@
+{
+	"format_version": "1.21.40",
+	"minecraft:item": {
+		"description": {
+			"identifier": "manhunt:hunter_compass",
+			"menu_category": {
+				"category": "equipment",
+				"group": "itemGroup.name.none"
+			}
+		},
+		"components": {
+			"minecraft:icon": {
+				"textures": {
+					"default": "hunter_compass"
+				}
+			},
+			"minecraft:display_name": {
+				"value": "item.manhunt:hunter_compass"
+			},
+			"minecraft:max_stack_size": 1,
+			"minecraft:glint": true,
+			"minecraft:allow_off_hand": false,
+			"minecraft:hand_equipped": true
+		}
+	}
+}

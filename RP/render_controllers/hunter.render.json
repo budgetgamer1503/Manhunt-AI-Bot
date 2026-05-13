@@ -1,0 +1,51 @@
+{
+	"format_version": "1.10.0",
+	"render_controllers": {
+		"controller.render.manhunt_hunter": {
+			"arrays": {
+				"textures": {
+					"Array.skins": [
+						"Texture.steve",
+						"Texture.alex",
+						"Texture.zombie",
+						"Texture.skeleton",
+						"Texture.creeper",
+						"Texture.custom",
+						"Texture.dream",
+						"Texture.technoblade"
+					]
+				}
+			},
+			"geometry": "geometry.default",
+			"materials": [
+				{
+					"*": "material.default"
+				}
+			],
+			"textures": [
+				"array.skins[query.property('manhunt:skin_id')]"
+			],
+			"part_visibility": [
+				{
+					"*": true
+				}
+			]
+		},
+		"controller.render.manhunt_hunter_armor": {
+			"geometry": "geometry.default",
+			"materials": [
+				{
+					"*": "material.humanoid_armor"
+				}
+			],
+			"textures": [
+				"texture.armor_empty"
+			],
+			"part_visibility": [
+				{
+					"*": true
+				}
+			]
+		}
+	}
+}

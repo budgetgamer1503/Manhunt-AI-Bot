@@ -1,0 +1,63 @@
+{
+    "format_version": 2,
+    "metadata": {
+        "authors": [
+            "BUDGETGAMER1503"
+        ]
+    },
+    "header": {
+        "name": "Manhunt Bot-v0.6.0 [BP]",
+        "description": "Spawns an AI-controlled hunter that tracks and chases you like a real manhunt.",
+        "min_engine_version": [
+            1,
+            26,
+            0
+        ],
+        "uuid": "7a0ad8cf-0736-40f8-973d-b1117fbceef8",
+        "version": [
+            0,
+            6,
+            0
+        ]
+    },
+    "modules": [
+        {
+            "type": "data",
+            "uuid": "afead9fc-d571-4bc7-bc24-9fb63913020d",
+            "version": [
+                0,
+                6,
+                0
+            ]
+        },
+        {
+            "type": "script",
+            "language": "javascript",
+            "uuid": "c71f4a1f-ed32-4062-9b36-78141ec3d81f",
+            "entry": "scripts/main.js",
+            "version": [
+                1,
+                0,
+                0
+            ]
+        }
+    ],
+    "dependencies": [
+        {
+            "module_name": "@minecraft/server",
+            "version": "2.3.0"
+        },
+        {
+            "module_name": "@minecraft/server-ui",
+            "version": "2.0.0"
+        },
+        {
+            "uuid": "896241cc-15a9-41ce-9f88-2c567caa9a21",
+            "version": [
+                0,
+                6,
+                0
+            ]
+        }
+    ]
+}

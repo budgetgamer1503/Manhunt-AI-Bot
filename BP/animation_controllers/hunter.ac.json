@@ -1,0 +1,46 @@
+{
+	"format_version": "1.10.0",
+	"animation_controllers": {
+		"controller.animation.manhunt.hunter_server": {
+			"initial_state": "idle",
+			"states": {
+				"idle": {
+					"transitions": [
+						{
+							"chase": "query.property('manhunt:phase')=='chase'"
+						},
+						{
+							"prep": "query.property('manhunt:phase')=='prep'"
+						}
+					]
+				},
+				"chase": {
+					"on_entry": [
+						"@s manhunt:enter_chase"
+					],
+					"transitions": [
+						{
+							"prep": "query.property('manhunt:phase')=='prep'"
+						},
+						{
+							"idle": "query.property('manhunt:phase')=='idle'"
+						}
+					]
+				},
+				"prep": {
+					"on_entry": [
+						"@s manhunt:enter_prep"
+					],
+					"transitions": [
+						{
+							"chase": "query.property('manhunt:phase')=='chase'"
+						},
+						{
+							"idle": "query.property('manhunt:phase')=='idle'"
+						}
+					]
+				}
+			}
+		}
+	}
+}

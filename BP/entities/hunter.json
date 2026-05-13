@@ -1,0 +1,463 @@
+{
+	"format_version": "1.21.40",
+	"minecraft:entity": {
+		"description": {
+			"identifier": "manhunt:hunter",
+			"is_spawnable": false,
+			"is_summonable": true,
+			"is_experimental": false,
+			"properties": {
+				"manhunt:skin_id": {
+					"type": "int",
+					"range": [
+						0,
+						7
+					],
+					"default": 0,
+					"client_sync": true
+				},
+				"manhunt:phase": {
+					"type": "enum",
+					"values": [
+						"idle",
+						"chase",
+						"prep"
+					],
+					"default": "idle",
+					"client_sync": true
+				},
+				"manhunt:action": {
+					"type": "enum",
+					"values": [
+						"none",
+						"attacking",
+						"eating",
+						"placing",
+						"mining"
+					],
+					"default": "none",
+					"client_sync": true
+				}
+			}
+		},
+		"component_groups": {
+			"manhunt:chase_phase": {
+				"minecraft:behavior.nearest_attackable_target": {
+					"priority": 1,
+					"must_see": false,
+					"reselect_targets": true,
+					"within_radius": 400,
+					"must_see_forget_duration": 60,
+					"entity_types": [
+						{
+							"filters": {
+								"test": "is_family",
+								"subject": "other",
+								"value": "player"
+							},
+							"max_dist": 400
+						}
+					]
+				},
+				"minecraft:behavior.melee_attack": {
+					"priority": 2,
+					"speed_multiplier": 1.15,
+					"track_target": true,
+					"reach_multiplier": 1,
+					"require_complete_path": false
+				},
+				"minecraft:movement": {
+					"value": 0.55
+				}
+			},
+			"manhunt:prep_phase": {
+				"minecraft:behavior.random_stroll": {
+					"priority": 5,
+					"speed_multiplier": 0.6,
+					"xz_dist": 8,
+					"y_dist": 3
+				},
+				"minecraft:movement": {
+					"value": 0.25
+				}
+			},
+			"manhunt:idle_phase": {
+				"minecraft:behavior.random_look_around": {
+					"priority": 8
+				},
+				"minecraft:movement": {
+					"value": 0.3
+				}
+			},
+			"manhunt:building_phase": {
+				"minecraft:movement": {
+					"value": 0.15
+				}
+			},
+			"manhunt:skin_steve": {},
+			"manhunt:skin_alex": {},
+			"manhunt:skin_zombie": {},
+			"manhunt:skin_skeleton": {},
+			"manhunt:skin_creeper": {},
+			"manhunt:skin_custom": {},
+			"manhunt:skin_dream": {},
+			"manhunt:skin_technoblade": {}
+		},
+		"components": {
+			"minecraft:type_family": {
+				"family": [
+					"hunter",
+					"mob",
+					"player"
+				]
+			},
+			"minecraft:health": {
+				"value": 20,
+				"max": 20
+			},
+			"minecraft:nameable": {
+				"always_show": true
+			},
+			"minecraft:collision_box": {
+				"width": 0.6,
+				"height": 1.8
+			},
+			"minecraft:physics": {},
+			"minecraft:pushable": {
+				"is_pushable": true,
+				"is_pushable_by_piston": true
+			},
+			"minecraft:navigation.walk": {
+				"can_path_over_water": true,
+				"can_swim": true,
+				"can_pass_doors": true,
+				"can_open_doors": true,
+				"avoid_water": false,
+				"avoid_damage_blocks": true,
+				"can_walk": true,
+				"can_walk_in_lava": false,
+				"can_path_from_air": true,
+				"can_breach": true,
+				"is_amphibious": false
+			},
+			"minecraft:movement": {
+				"value": 0.45
+			},
+			"minecraft:movement.basic": {},
+			"minecraft:jump.static": {
+				"jump_power": 0.42
+			},
+			"minecraft:can_climb": {},
+			"minecraft:breathable": {
+				"total_supply": 15,
+				"suffocate_time": 0,
+				"breathes_air": true,
+				"breathes_water": false
+			},
+			"minecraft:knockback_resistance": {
+				"value": 0
+			},
+			"minecraft:attack": {
+				"damage": 3
+			},
+			"minecraft:follow_range": {
+				"value": 400,
+				"max": 400
+			},
+			"minecraft:persistent": {},
+			"minecraft:equippable": {
+				"slots": [
+					{
+						"slot": 0,
+						"accepted_items": [
+							"minecraft:wooden_sword",
+							"minecraft:stone_sword",
+							"minecraft:iron_sword",
+							"minecraft:diamond_sword",
+							"minecraft:netherite_sword",
+							"minecraft:wooden_axe",
+							"minecraft:stone_axe",
+							"minecraft:iron_axe",
+							"minecraft:diamond_axe",
+							"minecraft:wooden_pickaxe",
+							"minecraft:stone_pickaxe",
+							"minecraft:iron_pickaxe",
+							"minecraft:diamond_pickaxe",
+							"minecraft:netherite_pickaxe",
+							"minecraft:bread",
+							"minecraft:cooked_beef",
+							"minecraft:cooked_porkchop",
+							"minecraft:cooked_mutton",
+							"minecraft:cooked_chicken",
+							"minecraft:cooked_salmon",
+							"minecraft:cooked_cod",
+							"minecraft:apple",
+							"minecraft:golden_apple",
+							"minecraft:dried_kelp",
+							"minecraft:cobblestone",
+							"minecraft:dirt",
+							"minecraft:oak_planks",
+							"minecraft:spruce_planks",
+							"minecraft:birch_planks",
+							"minecraft:stone",
+							"minecraft:cobbled_deepslate",
+							"minecraft:netherrack",
+							"minecraft:water_bucket",
+							"minecraft:lava_bucket",
+							"minecraft:bucket",
+							"minecraft:oak_log",
+							"minecraft:spruce_log",
+							"minecraft:birch_log",
+							"minecraft:jungle_log",
+							"minecraft:acacia_log",
+							"minecraft:dark_oak_log",
+							"minecraft:stick",
+							"minecraft:crafting_table",
+							"minecraft:furnace",
+							"minecraft:coal",
+							"minecraft:raw_iron",
+							"minecraft:iron_ingot",
+							"minecraft:torch"
+						]
+					},
+					{
+						"slot": 1,
+						"accepted_items": [
+							"minecraft:shield"
+						]
+					},
+					{
+						"slot": 2,
+						"accepted_items": [
+							"minecraft:leather_helmet",
+							"minecraft:iron_helmet",
+							"minecraft:diamond_helmet",
+							"minecraft:netherite_helmet"
+						]
+					},
+					{
+						"slot": 3,
+						"accepted_items": [
+							"minecraft:leather_chestplate",
+							"minecraft:iron_chestplate",
+							"minecraft:diamond_chestplate",
+							"minecraft:netherite_chestplate"
+						]
+					},
+					{
+						"slot": 4,
+						"accepted_items": [
+							"minecraft:leather_leggings",
+							"minecraft:iron_leggings",
+							"minecraft:diamond_leggings",
+							"minecraft:netherite_leggings"
+						]
+					},
+					{
+						"slot": 5,
+						"accepted_items": [
+							"minecraft:leather_boots",
+							"minecraft:iron_boots",
+							"minecraft:diamond_boots",
+							"minecraft:netherite_boots"
+						]
+					}
+				]
+			},
+			"minecraft:inventory": {
+				"inventory_size": 27,
+				"container_type": "inventory"
+			},
+			"minecraft:behavior.open_door": {
+				"priority": 3,
+				"close_door_after": true
+			},
+			"minecraft:behavior.pickup_items": {
+				"priority": 4,
+				"max_dist": 10,
+				"goal_radius": 2,
+				"speed_multiplier": 1.2,
+				"track_target": true,
+				"can_pickup_any_item": true,
+				"cooldown_after_being_attacked": 20
+			},
+			"minecraft:behavior.equip_item": {
+				"priority": 2
+			},
+			"minecraft:underwater_movement": {
+				"value": 0.2
+			},
+			"minecraft:damage_sensor": {
+				"triggers": [
+					{
+						"cause": "all",
+						"deals_damage": "yes"
+					}
+				]
+			},
+			"minecraft:behavior.float": {
+				"priority": 0
+			},
+			"minecraft:behavior.hurt_by_target": {
+				"priority": 1,
+				"alert_same_type": false,
+				"entity_types": [
+					{
+						"filters": {
+							"test": "is_family",
+							"subject": "other",
+							"value": "player"
+						}
+					},
+					{
+						"filters": {
+							"test": "is_family",
+							"subject": "other",
+							"value": "monster"
+						}
+					}
+				]
+			},
+			"minecraft:behavior.look_at_player": {
+				"priority": 9,
+				"look_distance": 2,
+				"probability": 0.02
+			},
+			"minecraft:experience_reward": {
+				"on_death": 5
+			}
+		},
+		"events": {
+			"manhunt:enter_chase": {
+				"remove": {
+					"component_groups": [
+						"manhunt:prep_phase",
+						"manhunt:idle_phase",
+						"manhunt:building_phase"
+					]
+				},
+				"add": {
+					"component_groups": [
+						"manhunt:chase_phase"
+					]
+				},
+				"set_property": {
+					"manhunt:phase": "chase"
+				}
+			},
+			"manhunt:enter_prep": {
+				"remove": {
+					"component_groups": [
+						"manhunt:chase_phase",
+						"manhunt:idle_phase",
+						"manhunt:building_phase"
+					]
+				},
+				"add": {
+					"component_groups": [
+						"manhunt:prep_phase"
+					]
+				},
+				"set_property": {
+					"manhunt:phase": "prep"
+				}
+			},
+			"manhunt:enter_idle": {
+				"remove": {
+					"component_groups": [
+						"manhunt:chase_phase",
+						"manhunt:prep_phase",
+						"manhunt:building_phase"
+					]
+				},
+				"add": {
+					"component_groups": [
+						"manhunt:idle_phase"
+					]
+				},
+				"set_property": {
+					"manhunt:phase": "idle"
+				}
+			},
+			"manhunt:enter_building": {
+				"remove": {
+					"component_groups": [
+						"manhunt:chase_phase",
+						"manhunt:prep_phase",
+						"manhunt:idle_phase"
+					]
+				},
+				"add": {
+					"component_groups": [
+						"manhunt:building_phase"
+					]
+				}
+			},
+			"manhunt:set_action_none": {
+				"set_property": {
+					"manhunt:action": "none"
+				}
+			},
+			"manhunt:set_action_attacking": {
+				"set_property": {
+					"manhunt:action": "attacking"
+				}
+			},
+			"manhunt:set_action_eating": {
+				"set_property": {
+					"manhunt:action": "eating"
+				}
+			},
+			"manhunt:set_action_placing": {
+				"set_property": {
+					"manhunt:action": "placing"
+				}
+			},
+			"manhunt:set_action_mining": {
+				"set_property": {
+					"manhunt:action": "mining"
+				}
+			},
+			"manhunt:set_skin_0": {
+				"set_property": {
+					"manhunt:skin_id": 0
+				}
+			},
+			"manhunt:set_skin_1": {
+				"set_property": {
+					"manhunt:skin_id": 1
+				}
+			},
+			"manhunt:set_skin_2": {
+				"set_property": {
+					"manhunt:skin_id": 2
+				}
+			},
+			"manhunt:set_skin_3": {
+				"set_property": {
+					"manhunt:skin_id": 3
+				}
+			},
+			"manhunt:set_skin_4": {
+				"set_property": {
+					"manhunt:skin_id": 4
+				}
+			},
+			"manhunt:set_skin_5": {
+				"set_property": {
+					"manhunt:skin_id": 5
+				}
+			},
+			"manhunt:set_skin_6": {
+				"set_property": {
+					"manhunt:skin_id": 6
+				}
+			},
+			"manhunt:set_skin_7": {
+				"set_property": {
+					"manhunt:skin_id": 7
+				}
+			}
+		}
+	}
+}

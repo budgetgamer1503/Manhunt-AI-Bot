@@ -1,0 +1,163 @@
+{
+	"format_version": "1.8.0",
+	"animations": {
+		"animation.manhunt.hunter.idle": {
+			"loop": true,
+			"animation_length": 2,
+			"bones": {
+				"rightArm": {
+					"rotation": [
+						"math.sin(query.life_time*60)*2",
+						0,
+						"math.sin(query.life_time*80)*1"
+					]
+				},
+				"leftArm": {
+					"rotation": [
+						"math.sin(query.life_time*60+180)*2",
+						0,
+						"-math.sin(query.life_time*80)*1"
+					]
+				}
+			}
+		},
+		"animation.manhunt.hunter.attack_swing": {
+			"loop": false,
+			"animation_length": 0.4,
+			"bones": {
+				"rightArm": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"0.1": [
+							-90,
+							-20,
+							0
+						],
+						"0.2": [
+							-120,
+							-30,
+							0
+						],
+						"0.3": [
+							-40,
+							10,
+							0
+						],
+						"0.4": [
+							0,
+							0,
+							0
+						]
+					}
+				},
+				"body": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"0.15": [
+							0,
+							-15,
+							0
+						],
+						"0.3": [
+							0,
+							10,
+							0
+						],
+						"0.4": [
+							0,
+							0,
+							0
+						]
+					}
+				}
+			}
+		},
+		"animation.manhunt.hunter.eating": {
+			"loop": true,
+			"animation_length": 1.6,
+			"bones": {
+				"rightArm": {
+					"rotation": [
+						"-80+math.sin(query.life_time*400)*8",
+						"-30+math.sin(query.life_time*500)*3",
+						0
+					]
+				},
+				"head": {
+					"rotation": [
+						"10+math.sin(query.life_time*400)*2",
+						0,
+						0
+					]
+				}
+			}
+		},
+		"animation.manhunt.hunter.place_block": {
+			"loop": false,
+			"animation_length": 0.5,
+			"bones": {
+				"rightArm": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"0.15": [
+							-60,
+							-10,
+							0
+						],
+						"0.3": [
+							-100,
+							-5,
+							0
+						],
+						"0.4": [
+							-60,
+							0,
+							0
+						],
+						"0.5": [
+							0,
+							0,
+							0
+						]
+					}
+				},
+				"body": {
+					"rotation": {
+						"0.0": [
+							0,
+							0,
+							0
+						],
+						"0.2": [
+							10,
+							0,
+							0
+						],
+						"0.4": [
+							5,
+							0,
+							0
+						],
+						"0.5": [
+							0,
+							0,
+							0
+						]
+					}
+				}
+			}
+		}
+	}
+}

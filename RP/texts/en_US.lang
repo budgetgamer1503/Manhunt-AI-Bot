@@ -1,0 +1,23 @@
+entity.manhunt:hunter.name=Hunter
+item.manhunt:hunter_compass=§6Hunter Compass
+tile.manhunt:hunter_compass.name=§6Hunter Compass
+
+## Spawn Egg
+item.spawn_egg.entity.manhunt:hunter.name=Spawn Hunter
+
+## UI Messages
+manhunt.spawn.warning=§cA hunter is already active!
+manhunt.spawn.title=§4THE HUNT BEGINS
+manhunt.spawn.subtitle=§c⚔ %s ⚔
+
+## Taunt Messages
+manhunt.taunt.1=You can run, but you can't hide...
+manhunt.taunt.2=I can hear your heartbeat.
+manhunt.taunt.3=Getting closer...
+manhunt.taunt.4=Did you think you could escape?
+manhunt.taunt.5=I see you.
+
+## Status Messages
+manhunt.hunter.defeated=§a✓ The hunter has been defeated!
+manhunt.hunter.spawned=§c⚔ The hunt has begun!
+manhunt.addon.loaded=§e⚔ Manhunt Bot addon loaded! Use the Hunter Compass to begin.

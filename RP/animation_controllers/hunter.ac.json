@@ -1,0 +1,148 @@
+{
+	"format_version": "1.10.0",
+	"animation_controllers": {
+		"controller.animation.manhunt.hunter": {
+			"initial_state": "idle",
+			"states": {
+				"idle": {
+					"animations": [
+						"idle_anim",
+						"look_at_target"
+					],
+					"transitions": [
+						{
+							"walking": "query.modified_move_speed>0.1&&query.property('manhunt:action')=='none'"
+						},
+						{
+							"attacking": "query.property('manhunt:action')=='attacking'"
+						},
+						{
+							"eating": "query.property('manhunt:action')=='eating'"
+						},
+						{
+							"placing": "query.property('manhunt:action')=='placing'"
+						},
+						{
+							"mining": "query.property('manhunt:action')=='mining'"
+						},
+						{
+							"swimming": "query.is_swimming"
+						}
+					]
+				},
+				"walking": {
+					"animations": [
+						"walk",
+						"bob",
+						"look_at_target"
+					],
+					"transitions": [
+						{
+							"idle": "query.modified_move_speed<0.1&&query.property('manhunt:action')=='none'"
+						},
+						{
+							"attacking": "query.property('manhunt:action')=='attacking'"
+						},
+						{
+							"eating": "query.property('manhunt:action')=='eating'"
+						},
+						{
+							"placing": "query.property('manhunt:action')=='placing'"
+						},
+						{
+							"mining": "query.property('manhunt:action')=='mining'"
+						},
+						{
+							"swimming": "query.is_swimming"
+						}
+					]
+				},
+				"attacking": {
+					"animations": [
+						"attack_swing",
+						"look_at_target"
+					],
+					"transitions": [
+						{
+							"idle": "query.property('manhunt:action')=='none'&&query.modified_move_speed<0.1"
+						},
+						{
+							"walking": "query.property('manhunt:action')=='none'&&query.modified_move_speed>0.1"
+						},
+						{
+							"eating": "query.property('manhunt:action')=='eating'"
+						},
+						{
+							"placing": "query.property('manhunt:action')=='placing'"
+						}
+					]
+				},
+				"eating": {
+					"animations": [
+						"eating_anim"
+					],
+					"transitions": [
+						{
+							"idle": "query.property('manhunt:action')=='none'&&query.modified_move_speed<0.1"
+						},
+						{
+							"walking": "query.property('manhunt:action')=='none'&&query.modified_move_speed>0.1"
+						},
+						{
+							"attacking": "query.property('manhunt:action')=='attacking'"
+						}
+					]
+				},
+				"placing": {
+					"animations": [
+						"place_block"
+					],
+					"transitions": [
+						{
+							"idle": "query.property('manhunt:action')=='none'&&query.modified_move_speed<0.1"
+						},
+						{
+							"walking": "query.property('manhunt:action')=='none'&&query.modified_move_speed>0.1"
+						},
+						{
+							"attacking": "query.property('manhunt:action')=='attacking'"
+						}
+					]
+				},
+				"mining": {
+					"animations": [
+						"attack_swing"
+					],
+					"transitions": [
+						{
+							"idle": "query.property('manhunt:action')=='none'&&query.modified_move_speed<0.1"
+						},
+						{
+							"walking": "query.property('manhunt:action')=='none'&&query.modified_move_speed>0.1"
+						},
+						{
+							"attacking": "query.property('manhunt:action')=='attacking'"
+						},
+						{
+							"placing": "query.property('manhunt:action')=='placing'"
+						}
+					]
+				},
+				"swimming": {
+					"animations": [
+						"swimming",
+						"look_at_target"
+					],
+					"transitions": [
+						{
+							"idle": "!query.is_swimming&&query.modified_move_speed<0.1"
+						},
+						{
+							"walking": "!query.is_swimming&&query.modified_move_speed>0.1"
+						}
+					]
+				}
+			}
+		}
+	}
+}

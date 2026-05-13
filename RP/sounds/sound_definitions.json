@@ -1,0 +1,25 @@
+{
+  "format_version": "1.14.0",
+  "sound_definitions": {
+    "manhunt.countdown.tick": {
+      "category": "ui",
+      "sounds": [
+        {
+          "name": "sounds/countdown_tick",
+          "volume": 0.8,
+          "pitch": 1.2
+        }
+      ]
+    },
+    "manhunt.hunt.begin": {
+      "category": "ui",
+      "sounds": [
+        {
+          "name": "sounds/random/anvil_land",
+          "volume": 1.0,
+          "pitch": 0.6
+        }
+      ]
+    }
+  }
+}
