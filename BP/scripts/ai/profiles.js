@@ -128,6 +128,7 @@ export const AI_PROFILES = {
         jumpAttackChance: 0.7
     }
 };
+
 export const TAUNTS = [
     "§c§oYou can run, but you can't hide...",
     "§c§oI can hear your heartbeat.",
@@ -140,9 +141,11 @@ export const TAUNTS = [
     "§c§oI'm right behind you...",
     "§c§oNowhere left to run."
 ];
-export function getProfile(aiLevel) {
-    return AI_PROFILES[aiLevel] ?? AI_PROFILES.normal;
+
+export function getProfile(level) {
+    return AI_PROFILES[level] ?? AI_PROFILES.normal;
 }
-export function getRandomTaunt() {
+
+export function randomTaunt() {
     return TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
 }
