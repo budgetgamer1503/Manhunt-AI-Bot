@@ -14,14 +14,50 @@ import {
     setTarget, setBed, storeDeathLocation, resolveDeathPosition,
     cachePosition, cleanupOrphans, cancelRespawn,
     getEquipmentPersistence, saveInventoryForRespawn, clearSavedInventory,
-    attemptBedPlacementNearPortal, getCurrentConfigSnapshot
+    attemptBedPlacementNearPortal, getCurrentConfigSnapshot,
+    getTargets, addTarget, removeTarget, clearTargets
 } from "./entity_manager.js";
 import { startAI, stopAI, forceChaseMode, triggerAttack, rollCrit, handleDamage } from "./state_machine.js";
+import { startHunt, endHunt, recordHunterDeath, recordRunnerDeath, checkTimeLimit, loadHuntState, isHuntActive } from "./win_conditions.js";
+import { startStats, endStats, recordDamageDealt, recordDamageTaken, recordHunterDeath as statsRecordHunterDeath, recordRunnerDeath as statsRecordRunnerDeath } from "./stats.js";
+import {
+    playFootstep, playProximityHeartbeat, playAttackSound, playDeathSound,
+    playRespawnSound, playTauntSound, playHuntStartSound, playHuntEndSound,
+    playCountdownSound, playBlockPlaceSound, playBlockBreakSound, playEatSound
+} from "./sounds.js";
+import { registerCommands } from "./commands.js";
+import { info, debug, error } from "./logger.js";
+
+const MODULE = "main";
 
 let spawnSequenceActive = false;
 let bedScanId = null;
 let bedScanCounter = 0;
 let loadoutSyncId = null;
+let compassTrackingId = null;
+let footstepId = null;
+let proximityId = null;
+let timeLimitCheckId = null;
+
+// =============================================================================
+// Initialization
+// =============================================================================
+
+registerCommands();
+loadHuntState();
+
+system.runTimeout(() => {
+    cleanupOrphans();
+}, 40);
+
+system.run(() => {
+    info(MODULE, "Manhunt Bot v0.7.0 loaded.");
+    world.sendMessage("§eManhunt Bot v0.7.0 §7loaded. Use the §eHunter Compass §7to begin.");
+});
+
+// =============================================================================
+// Compass Use Handler
+// =============================================================================
 
 world.afterEvents.itemUse.subscribe((event) => {
     const player = event.source;
@@ -41,6 +77,10 @@ world.afterEvents.itemUse.subscribe((event) => {
         }, isActive());
     });
 });
+
+// =============================================================================
+// Spawn / Despawn Handlers
+// =============================================================================
 
 function onSpawnConfirmed(player, config) {
     if (isActive()) {
@@ -65,8 +105,7 @@ function onDespawnRequested(player) {
     }
     despawn(true);
     stopAI();
-    stopBedScanning();
-    stopLoadoutSync();
+    stopAllSystems();
     player.sendMessage("§7The hunter has been despawned.");
 }
 
@@ -101,18 +140,20 @@ function beginSpawnSequence(player, config) {
 
         let countdown = 10;
         showCountdown(player, countdown);
-        playSound(player);
+        playCountdownSound(player);
 
         const countdownId = system.runInterval(() => {
             countdown--;
             if (countdown > 0) {
                 showCountdown(player, countdown);
-                playSound(player);
+                playCountdownSound(player);
                 return;
             }
 
             if (countdown === 0) {
                 showHuntBegins(player, config.name);
+                playHuntStartSound(player);
+
                 const hunter = spawn(player, config, playerLoadout);
 
                 if (hunter) {
@@ -121,13 +162,22 @@ function beginSpawnSequence(player, config) {
                         try { hunterInventory.equipBest(hunter); } catch (_) { }
                     }
 
+                    // Start win conditions tracking
+                    startHunt(config);
+                    startStats();
+
                     startAI();
                     startBedScanning();
                     startLoadoutSync();
+                    startCompassTracking();
+                    startFootstepSounds();
+                    startProximitySounds();
+                    startTimeLimitCheck();
+
                     player.sendMessage(`§c§l${config.name} §r§7has spawned and is hunting you.`);
                     player.sendMessage(`§7AI Level: §6${config.aiLevel}`);
                     player.sendMessage(`§7Inventory Mode: §b${describeInventoryMode(config.inventoryMode)}`);
-                    player.sendMessage("§7Preparation mode is hybrid: the hunter can still gather, craft, and upgrade gear.");
+                    player.sendMessage(`§7Win Condition: §6${config.winCondition || "Infinite"}`);
                     player.sendMessage("§7Tip: Sneak to hide from the tracker.");
                 } else {
                     player.sendMessage("§cFailed to spawn hunter. Try again.");
@@ -169,15 +219,17 @@ function showHuntBegins(player, name) {
     } catch (_) { }
 }
 
-function playSound(player) {
-    try {
-        player.playSound("random.click", { volume: 0.8, pitch: 1.2 });
-    } catch (_) { }
-}
+// =============================================================================
+// Position Caching
+// =============================================================================
 
 system.runInterval(() => {
     cachePosition();
 }, 5);
+
+// =============================================================================
+// Death Handlers
+// =============================================================================
 
 world.afterEvents.entityDie.subscribe((event) => {
     const entity = event.deadEntity;
@@ -199,6 +251,8 @@ function handleHunterDeath(entity) {
     const death = resolveDeathPosition(entity);
     storeDeathLocation(death.pos, death.dimId);
 
+    playDeathSound(entity.dimension, death.pos);
+
     const target = getTarget();
     const inventory = getInventory();
     if (inventory) {
@@ -219,6 +273,33 @@ function handleHunterDeath(entity) {
         entity.runCommand("replaceitem entity @s slot.weapon.offhand 0 air 0");
     } catch (_) { }
 
+    // Record stats
+    statsRecordHunterDeath();
+
+    // Check win conditions
+    const result = recordHunterDeath();
+    if (result.huntOver) {
+        if (target) {
+            try {
+                target.onScreenDisplay.setTitle("§a§lHUNTER DEFEATED!", {
+                    fadeInDuration: 5,
+                    fadeOutDuration: 20,
+                    stayDuration: 60,
+                    subtitle: "§7You survived the manhunt."
+                });
+                target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
+                playHuntEndSound(target, "runner");
+            } catch (_) { }
+        }
+        endStats("runner", result.reason);
+        stopAI();
+        stopAllSystems();
+        system.runTimeout(() => {
+            try { despawn(false); } catch (_) { }
+        }, 10);
+        return;
+    }
+
     if (!canRespawn()) {
         if (target) {
             try {
@@ -229,11 +310,12 @@ function handleHunterDeath(entity) {
                     subtitle: "§7You survived the manhunt."
                 });
                 target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
+                playHuntEndSound(target, "runner");
             } catch (_) { }
         }
+        endStats("runner", "Hunter could not respawn");
         stopAI();
-        stopBedScanning();
-        stopLoadoutSync();
+        stopAllSystems();
         system.runTimeout(() => {
             try { despawn(false); } catch (_) { }
         }, 10);
@@ -259,9 +341,14 @@ function handleHunterDeath(entity) {
         if (newHunter && target) {
             try {
                 setTarget(target);
+                playRespawnSound(newHunter.dimension, newHunter.location);
                 startAI();
                 startBedScanning();
                 startLoadoutSync();
+                startCompassTracking();
+                startFootstepSounds();
+                startProximitySounds();
+                startTimeLimitCheck();
             } catch (_) { }
             return;
         }
@@ -275,12 +362,13 @@ function handleHunterDeath(entity) {
                     subtitle: "§7The hunter failed to respawn."
                 });
                 target.sendMessage("§aThe hunter has been permanently defeated.");
+                playHuntEndSound(target, "runner");
             } catch (_) { }
         }
 
+        endStats("runner", "Hunter failed to respawn");
         stopAI();
-        stopBedScanning();
-        stopLoadoutSync();
+        stopAllSystems();
         system.runTimeout(() => {
             try { despawn(false); } catch (_) { }
         }, 10);
@@ -291,6 +379,13 @@ function handlePlayerDeath(entity) {
     const target = getTarget();
     if (!target || target.id !== entity.id) return;
 
+    statsRecordRunnerDeath();
+
+    const result = recordRunnerDeath(entity.nameTag || "Player");
+    if (result.huntOver) {
+        endStats("hunter", result.reason);
+    }
+
     system.runTimeout(() => {
         if (isRespawning()) {
             cancelRespawn("target player died during respawn");
@@ -298,8 +393,7 @@ function handlePlayerDeath(entity) {
 
         despawn(false);
         stopAI();
-        stopBedScanning();
-        stopLoadoutSync();
+        stopAllSystems();
 
         try {
             world.sendMessage(`§c${entity.nameTag || "Player"} §7was killed by the hunter. The manhunt is over.`);
@@ -307,12 +401,19 @@ function handlePlayerDeath(entity) {
     }, 20);
 }
 
+// =============================================================================
+// Damage Handlers
+// =============================================================================
+
 world.afterEvents.entityHurt.subscribe((event) => {
     const entity = event.hurtEntity;
     if (!entity) return;
 
     try {
         if (entity.typeId === "manhunt:hunter" && entity.hasTag("hunter_active")) {
+            const damage = event.damage;
+            recordDamageTaken(damage);
+
             const inventory = getInventory();
             if (inventory) {
                 const cause = event.damageSource?.cause ?? "none";
@@ -332,6 +433,7 @@ world.afterEvents.entityHitEntity.subscribe((event) => {
     try {
         if (attacker.typeId === "manhunt:hunter" && attacker.hasTag("hunter_active")) {
             triggerAttack(attacker);
+            playAttackSound(attacker);
 
             const equippable = attacker.getComponent("minecraft:equippable");
             if (equippable) {
@@ -361,11 +463,17 @@ world.afterEvents.entityHitEntity.subscribe((event) => {
                             });
                         } catch (_) { }
                     }
+
+                    recordDamageDealt(weaponDamage + extraDamage);
                 }
             }
         }
     } catch (_) { }
 });
+
+// =============================================================================
+// Bed Scanning
+// =============================================================================
 
 function startBedScanning() {
     if (bedScanId !== null) return;
@@ -423,41 +531,157 @@ function stopBedScanning() {
     bedScanId = null;
 }
 
-world.afterEvents.playerLeave.subscribe((event) => {
-    const target = getTarget();
-    if (target) {
+// =============================================================================
+// Compass Tracking
+// =============================================================================
+
+function startCompassTracking() {
+    if (compassTrackingId !== null) return;
+
+    compassTrackingId = system.runInterval(() => {
+        const hunter = getHunter();
+        const target = getTarget();
+        if (!hunter || !target) return;
+
         try {
-            if (target.name === event.playerName) {
-                if (isRespawning()) {
-                    cancelRespawn("target player left during respawn");
+            const hPos = hunter.location;
+            const tPos = target.location;
+            const dx = hPos.x - tPos.x;
+            const dz = hPos.z - tPos.z;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+
+            // Show distance on action bar when holding compass
+            const equippable = target.getComponent("minecraft:equippable");
+            if (equippable) {
+                const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
+                if (mainhand?.typeId === "manhunt:hunter_compass") {
+                    const color = dist < 30 ? "§c" : dist < 80 ? "§e" : "§a";
+                    const arrow = getDirectionArrow(tPos, hPos);
+                    target.onScreenDisplay.setActionBar(`${color}${arrow} Hunter: ${Math.floor(dist)}m away`);
                 }
-                despawn(false);
-                stopAI();
-                stopBedScanning();
-                stopLoadoutSync();
-                world.sendMessage(`§7${event.playerName} left the game. The hunter has been despawned.`);
             }
-        } catch (_) {
-            if (isRespawning()) {
-                cancelRespawn("target player left during respawn");
+        } catch (_) { }
+    }, 10);
+}
+
+function getDirectionArrow(from, to) {
+    const dx = to.x - from.x;
+    const dz = to.z - from.z;
+    const angle = Math.atan2(dx, dz) * (180 / Math.PI);
+
+    if (angle >= -22.5 && angle < 22.5) return "↑";       // North
+    if (angle >= 22.5 && angle < 67.5) return "↗";        // Northeast
+    if (angle >= 67.5 && angle < 112.5) return "→";       // East
+    if (angle >= 112.5 && angle < 157.5) return "↘";      // Southeast
+    if (angle >= 157.5 || angle < -157.5) return "↓";     // South
+    if (angle >= -157.5 && angle < -112.5) return "↙";    // Southwest
+    if (angle >= -112.5 && angle < -67.5) return "←";     // West
+    if (angle >= -67.5 && angle < -22.5) return "↖";      // Northwest
+    return "●";
+}
+
+function stopCompassTracking() {
+    if (compassTrackingId === null) return;
+    system.clearRun(compassTrackingId);
+    compassTrackingId = null;
+}
+
+// =============================================================================
+// Footstep Sounds
+// =============================================================================
+
+function startFootstepSounds() {
+    if (footstepId !== null) return;
+
+    footstepId = system.runInterval(() => {
+        const hunter = getHunter();
+        if (!hunter) return;
+
+        try {
+            const vel = hunter.getVelocity();
+            const speed = Math.sqrt(vel.x ** 2 + vel.z ** 2);
+            if (speed > 0.05) {
+                playFootstep(hunter);
             }
-            despawn(false);
+        } catch (_) { }
+    }, 8);
+}
+
+function stopFootstepSounds() {
+    if (footstepId === null) return;
+    system.clearRun(footstepId);
+    footstepId = null;
+}
+
+// =============================================================================
+// Proximity Heartbeat
+// =============================================================================
+
+function startProximitySounds() {
+    if (proximityId !== null) return;
+
+    proximityId = system.runInterval(() => {
+        const hunter = getHunter();
+        const target = getTarget();
+        if (!hunter || !target) return;
+
+        try {
+            const hPos = hunter.location;
+            const tPos = target.location;
+            const dist = Math.sqrt((hPos.x - tPos.x) ** 2 + (hPos.z - tPos.z) ** 2);
+            playProximityHeartbeat(target, dist);
+        } catch (_) { }
+    }, 20);
+}
+
+function stopProximitySounds() {
+    if (proximityId === null) return;
+    system.clearRun(proximityId);
+    proximityId = null;
+}
+
+// =============================================================================
+// Time Limit Check
+// =============================================================================
+
+function startTimeLimitCheck() {
+    if (timeLimitCheckId !== null) return;
+
+    timeLimitCheckId = system.runInterval(() => {
+        const result = checkTimeLimit();
+        if (result.huntOver) {
+            const target = getTarget();
+            if (target) {
+                try {
+                    target.onScreenDisplay.setTitle("§a§lTIME'S UP!", {
+                        fadeInDuration: 5,
+                        fadeOutDuration: 20,
+                        stayDuration: 60,
+                        subtitle: "§7You survived the time limit!"
+                    });
+                    target.sendMessage("§aYou survived! §7The time limit has expired.");
+                    playHuntEndSound(target, "runner");
+                } catch (_) { }
+            }
+            endStats("runner", result.reason);
             stopAI();
-            stopBedScanning();
-            stopLoadoutSync();
+            stopAllSystems();
+            system.runTimeout(() => {
+                try { despawn(false); } catch (_) { }
+            }, 10);
         }
-    }
+    }, 40);
+}
 
-    clearPlayerConfig(event.playerId ?? "");
-});
+function stopTimeLimitCheck() {
+    if (timeLimitCheckId === null) return;
+    system.clearRun(timeLimitCheckId);
+    timeLimitCheckId = null;
+}
 
-system.runTimeout(() => {
-    cleanupOrphans();
-}, 40);
-
-system.run(() => {
-    world.sendMessage("§eManhunt Bot §7loaded. Use the §eHunter Compass §7to begin.");
-});
+// =============================================================================
+// Loadout Sync (Player Share mode)
+// =============================================================================
 
 function startLoadoutSync() {
     if (loadoutSyncId !== null) return;
@@ -487,4 +711,95 @@ function stopLoadoutSync() {
     if (loadoutSyncId === null) return;
     system.clearRun(loadoutSyncId);
     loadoutSyncId = null;
+}
+
+// =============================================================================
+// Player Leave Handler
+// =============================================================================
+
+world.afterEvents.playerLeave.subscribe((event) => {
+    const target = getTarget();
+    if (target) {
+        try {
+            if (target.name === event.playerName) {
+                if (isRespawning()) {
+                    cancelRespawn("target player left during respawn");
+                }
+                despawn(false);
+                stopAI();
+                stopAllSystems();
+                world.sendMessage(`§7${event.playerName} left the game. The hunter has been despawned.`);
+            }
+        } catch (_) {
+            if (isRespawning()) {
+                cancelRespawn("target player left during respawn");
+            }
+            despawn(false);
+            stopAI();
+            stopAllSystems();
+        }
+    }
+
+    clearPlayerConfig(event.playerId ?? "");
+});
+
+// =============================================================================
+// Portal Following
+// =============================================================================
+
+world.afterEvents.playerDimensionChange.subscribe((event) => {
+    const player = event.player;
+    const target = getTarget();
+    if (!target || player.id !== target.id) return;
+
+    debug(MODULE, `Target changed dimension: ${event.fromDimension.id} -> ${event.toDimension.id}`);
+
+    // Schedule hunter to follow after a short delay
+    system.runTimeout(() => {
+        const hunter = getHunter();
+        if (!hunter || !isActive()) return;
+
+        try {
+            const toDimension = event.toDimension;
+            const tPos = player.location;
+
+            // Find safe position near target in new dimension
+            let spawnY = tPos.y;
+            for (let y = Math.floor(tPos.y) + 10; y >= Math.max(tPos.y - 20, -64); y--) {
+                const block = toDimension.getBlock({ x: Math.floor(tPos.x), y, z: Math.floor(tPos.z) });
+                if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
+                    spawnY = y + 1;
+                    break;
+                }
+            }
+
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 8 + Math.random() * 5;
+            const newX = tPos.x + Math.cos(angle) * dist;
+            const newZ = tPos.z + Math.sin(angle) * dist;
+
+            hunter.teleport(
+                { x: newX, y: spawnY, z: newZ },
+                { dimension: toDimension }
+            );
+
+            debug(MODULE, `Hunter followed target to ${toDimension.id}`);
+            target.sendMessage("§cThe hunter followed you through the portal!");
+        } catch (e) {
+            error(MODULE, "Failed to follow target through portal", e);
+        }
+    }, 60); // 3 second delay
+});
+
+// =============================================================================
+// System Stop Helper
+// =============================================================================
+
+function stopAllSystems() {
+    stopBedScanning();
+    stopLoadoutSync();
+    stopCompassTracking();
+    stopFootstepSounds();
+    stopProximitySounds();
+    stopTimeLimitCheck();
 }

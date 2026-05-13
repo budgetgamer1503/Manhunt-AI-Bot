@@ -1,0 +1,165 @@
+/*
+ * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * Unauthorized reproduction or distribution is strictly prohibited.
+ */
+
+/**
+ * AI difficulty profiles and taunt definitions.
+ * Extracted from state_machine.js for v0.7.0 modular refactor.
+ */
+
+export const AI_PROFILES = {
+    easy: {
+        catchupDistance: 96,
+        catchupPlaceDist: 52,
+        prepEnterDist: 48,
+        prepExitDist: 26,
+        prepTravelBlocks: 300,
+        attackRange: 3.2,
+        comboRange: 3.1,
+        strafeRange: 3.6,
+        jumpAttackMin: 3,
+        jumpAttackMax: 5,
+        sprintJumpMin: 10,
+        sprintJumpMax: 34,
+        lavaPourRange: 3.5,
+        critChance: 0.15,
+        critMultiplier: 1.2,
+        cdCombo: 7,
+        cdJumpAttack: 30,
+        cdStrafe: 12,
+        cdSprintJump: 24,
+        cdEat: 12,
+        cdTaunt: 360,
+        cdTauntClose: 220,
+        cdAttackAnim: 5,
+        cdCatchup: 90,
+        cdMining: 14,
+        cdParkour: 16,
+        cdPlace: 5,
+        cdShield: 30,
+        retreatHp: 7,
+        retreatHealHp: 14,
+        prepDuration: 700,
+        prepGatherRadius: 4,
+        prepLogTarget: 12,
+        prepStoneTarget: 24,
+        prepIronTarget: 2,
+        gatherSearchRadius: 3,
+        eatBelowHp: 12,
+        shieldBlockChance: 0.2,
+        jumpAttackChance: 0.25
+    },
+    normal: {
+        catchupDistance: 80,
+        catchupPlaceDist: 40,
+        prepEnterDist: 40,
+        prepExitDist: 30,
+        prepTravelBlocks: 250,
+        attackRange: 3.5,
+        comboRange: 3.5,
+        strafeRange: 4.0,
+        jumpAttackMin: 3,
+        jumpAttackMax: 6,
+        sprintJumpMin: 8,
+        sprintJumpMax: 40,
+        lavaPourRange: 4,
+        critChance: 0.33,
+        critMultiplier: 1.5,
+        cdCombo: 4,
+        cdJumpAttack: 20,
+        cdStrafe: 8,
+        cdSprintJump: 15,
+        cdEat: 15,
+        cdTaunt: 300,
+        cdTauntClose: 150,
+        cdAttackAnim: 4,
+        cdCatchup: 50,
+        cdMining: 10,
+        cdParkour: 10,
+        cdPlace: 3,
+        cdShield: 20,
+        retreatHp: 4,
+        retreatHealHp: 10,
+        prepDuration: 600,
+        prepGatherRadius: 5,
+        prepLogTarget: 16,
+        prepStoneTarget: 32,
+        prepIronTarget: 3,
+        gatherSearchRadius: 4,
+        eatBelowHp: 14,
+        shieldBlockChance: 0.5,
+        jumpAttackChance: 0.5
+    },
+    expert: {
+        catchupDistance: 64,
+        catchupPlaceDist: 28,
+        prepEnterDist: 32,
+        prepExitDist: 36,
+        prepTravelBlocks: 200,
+        attackRange: 3.8,
+        comboRange: 3.7,
+        strafeRange: 4.5,
+        jumpAttackMin: 2.5,
+        jumpAttackMax: 7,
+        sprintJumpMin: 6,
+        sprintJumpMax: 48,
+        lavaPourRange: 5,
+        critChance: 0.45,
+        critMultiplier: 1.8,
+        cdCombo: 3,
+        cdJumpAttack: 14,
+        cdStrafe: 5,
+        cdSprintJump: 10,
+        cdEat: 10,
+        cdTaunt: 220,
+        cdTauntClose: 110,
+        cdAttackAnim: 3,
+        cdCatchup: 30,
+        cdMining: 7,
+        cdParkour: 6,
+        cdPlace: 2,
+        cdShield: 12,
+        retreatHp: 3,
+        retreatHealHp: 8,
+        prepDuration: 450,
+        prepGatherRadius: 6,
+        prepLogTarget: 18,
+        prepStoneTarget: 40,
+        prepIronTarget: 4,
+        gatherSearchRadius: 5,
+        eatBelowHp: 16,
+        shieldBlockChance: 0.65,
+        jumpAttackChance: 0.7
+    }
+};
+
+export const TAUNTS = [
+    "§c§oYou can run, but you can't hide...",
+    "§c§oI can hear your heartbeat.",
+    "§c§oGetting closer...",
+    "§c§oDid you think you could escape?",
+    "§c§oI see you.",
+    "§c§oYou're making this too easy.",
+    "§c§oRun faster.",
+    "§c§oThe hunt never ends.",
+    "§c§oI'm right behind you...",
+    "§c§oNowhere left to run."
+];
+
+/**
+ * Get the AI profile for the current difficulty level.
+ * @param {string} aiLevel - "easy", "normal", or "expert"
+ * @returns {object} The AI profile object
+ */
+export function getProfile(aiLevel) {
+    return AI_PROFILES[aiLevel] ?? AI_PROFILES.normal;
+}
+
+/**
+ * Get a random taunt message.
+ * @returns {string} A formatted taunt string
+ */
+export function getRandomTaunt() {
+    return TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
+}

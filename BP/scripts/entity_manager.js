@@ -6,15 +6,19 @@
 import { world, system, EffectTypes, BlockPermutation } from "@minecraft/server";
 import { HunterInventory } from "./inventory.js";
 import { DEFAULT_CREATOR_KIT_ID } from "./kits.js";
+import { debug, error } from "./logger.js";
 
+const MODULE = "entity_manager";
 const HUNTER_TYPE = "manhunt:hunter";
 const HUNTER_TAG = "hunter_active";
 const RESPAWN_DELAY = 1200;
 const RESPAWN_INVINCIBILITY = 100;
+const CONFIG_PROP = "manhunt:last_config";
 
 let activeHunter = null;
 let hunterInventory = null;
 let targetPlayer = null;
+let targetPlayers = new Set();
 let hunterName = "Hunter";
 let hunterSkinId = 0;
 let hunterEnableTaunts = true;
@@ -45,6 +49,10 @@ let lastRespawnStatus = {
 let hunterInventoryMode = "starter";
 let hunterCreatorKitId = DEFAULT_CREATOR_KIT_ID;
 let hunterPrepBehavior = "hybrid";
+let hunterWinCondition = "infinite";
+let hunterMaxLives = 3;
+let hunterTimeLimitMinutes = 30;
+let hunterKillTarget = 3;
 
 let respawnContext = null;
 const RESPAWN_MAX_RETRIES = 3;
@@ -90,6 +98,22 @@ export function getTarget() {
     return targetPlayer;
 }
 
+export function getTargets() {
+    return new Set(targetPlayers);
+}
+
+export function addTarget(player) {
+    targetPlayers.add(player.id);
+}
+
+export function removeTarget(player) {
+    targetPlayers.delete(player.id);
+}
+
+export function clearTargets() {
+    targetPlayers.clear();
+}
+
 export function getInventory() { return hunterInventory; }
 export function isActive() { return getHunter() !== null; }
 export function isRespawning() { return respawnInProgress; }
@@ -117,7 +141,11 @@ export function getCurrentConfigSnapshot() {
         aiLevel: hunterAILevel,
         inventoryMode: hunterInventoryMode,
         creatorKitId: hunterCreatorKitId,
-        prepBehavior: hunterPrepBehavior
+        prepBehavior: hunterPrepBehavior,
+        winCondition: hunterWinCondition,
+        maxLives: hunterMaxLives,
+        timeLimitMinutes: hunterTimeLimitMinutes,
+        killTarget: hunterKillTarget
     };
 }
 

@@ -3,7 +3,12 @@
  * Unauthorized reproduction or distribution is strictly prohibited.
  */
 
-import { system, world, BlockPermutation } from "@minecraft/server";
+/**
+ * AI State Machine — Orchestrator (v0.7.0 refactor).
+ * Delegates combat, gathering, building, and survival to ai/ submodules.
+ */
+
+import { system, world } from "@minecraft/server";
 import {
     getHunter, getTarget, getInventory, despawn,
     getEnableTaunts, getBoatHandling, getAILevel
@@ -12,147 +17,25 @@ import {
     checkLavaEscape, checkWaterMLG, checkBlockClutch, checkCaveEscape,
     checkPillarUp, checkParkourJump, checkBridging, executeAction
 } from "./movement.js";
+import { getProfile, getRandomTaunt } from "./ai/profiles.js";
+import {
+    triggerAttack, rollCrit, doStrafe, doJumpAttack, doSprintJump,
+    tryPourLava, tryEat, equipShield, clearShield, handleDamage,
+    getCombatTarget
+} from "./ai/combat.js";
+import {
+    startMining, finishMining, findPrepGatherTarget, placeUtility
+} from "./ai/gathering.js";
+import {
+    executeBridgeStep, executePillarStep, executePlaceWater,
+    executePlaceBlock, executeBreakBlock
+} from "./ai/building.js";
+import {
+    tickRetreat, cleanTempWater
+} from "./ai/survival.js";
+import { getDifficultyScaledProfile } from "./difficulty_scaling.js";
 
 const TICK_RATE = 2;
-
-const AI_PROFILES = {
-    easy: {
-        catchupDistance: 96,
-        catchupPlaceDist: 52,
-        prepEnterDist: 48,
-        prepExitDist: 26,
-        prepTravelBlocks: 300,
-        attackRange: 3.2,
-        comboRange: 3.1,
-        strafeRange: 3.6,
-        jumpAttackMin: 3,
-        jumpAttackMax: 5,
-        sprintJumpMin: 10,
-        sprintJumpMax: 34,
-        lavaPourRange: 3.5,
-        critChance: 0.15,
-        critMultiplier: 1.2,
-        cdCombo: 7,
-        cdJumpAttack: 30,
-        cdStrafe: 12,
-        cdSprintJump: 24,
-        cdEat: 12,
-        cdTaunt: 360,
-        cdTauntClose: 220,
-        cdAttackAnim: 5,
-        cdCatchup: 90,
-        cdMining: 14,
-        cdParkour: 16,
-        cdPlace: 5,
-        cdShield: 30,
-        retreatHp: 7,
-        retreatHealHp: 14,
-        prepDuration: 700,
-        prepGatherRadius: 4,
-        prepLogTarget: 12,
-        prepStoneTarget: 24,
-        prepIronTarget: 2,
-        gatherSearchRadius: 3,
-        eatBelowHp: 12,
-        shieldBlockChance: 0.2,
-        jumpAttackChance: 0.25
-    },
-    normal: {
-        catchupDistance: 80,
-        catchupPlaceDist: 40,
-        prepEnterDist: 40,
-        prepExitDist: 30,
-        prepTravelBlocks: 250,
-        attackRange: 3.5,
-        comboRange: 3.5,
-        strafeRange: 4.0,
-        jumpAttackMin: 3,
-        jumpAttackMax: 6,
-        sprintJumpMin: 8,
-        sprintJumpMax: 40,
-        lavaPourRange: 4,
-        critChance: 0.33,
-        critMultiplier: 1.5,
-        cdCombo: 4,
-        cdJumpAttack: 20,
-        cdStrafe: 8,
-        cdSprintJump: 15,
-        cdEat: 15,
-        cdTaunt: 300,
-        cdTauntClose: 150,
-        cdAttackAnim: 4,
-        cdCatchup: 50,
-        cdMining: 10,
-        cdParkour: 10,
-        cdPlace: 3,
-        cdShield: 20,
-        retreatHp: 4,
-        retreatHealHp: 10,
-        prepDuration: 600,
-        prepGatherRadius: 5,
-        prepLogTarget: 16,
-        prepStoneTarget: 32,
-        prepIronTarget: 3,
-        gatherSearchRadius: 4,
-        eatBelowHp: 14,
-        shieldBlockChance: 0.5,
-        jumpAttackChance: 0.5
-    },
-    expert: {
-        catchupDistance: 64,
-        catchupPlaceDist: 28,
-        prepEnterDist: 32,
-        prepExitDist: 36,
-        prepTravelBlocks: 200,
-        attackRange: 3.8,
-        comboRange: 3.7,
-        strafeRange: 4.5,
-        jumpAttackMin: 2.5,
-        jumpAttackMax: 7,
-        sprintJumpMin: 6,
-        sprintJumpMax: 48,
-        lavaPourRange: 5,
-        critChance: 0.45,
-        critMultiplier: 1.8,
-        cdCombo: 3,
-        cdJumpAttack: 14,
-        cdStrafe: 5,
-        cdSprintJump: 10,
-        cdEat: 10,
-        cdTaunt: 220,
-        cdTauntClose: 110,
-        cdAttackAnim: 3,
-        cdCatchup: 30,
-        cdMining: 7,
-        cdParkour: 6,
-        cdPlace: 2,
-        cdShield: 12,
-        retreatHp: 3,
-        retreatHealHp: 8,
-        prepDuration: 450,
-        prepGatherRadius: 6,
-        prepLogTarget: 18,
-        prepStoneTarget: 40,
-        prepIronTarget: 4,
-        gatherSearchRadius: 5,
-        eatBelowHp: 16,
-        shieldBlockChance: 0.65,
-        jumpAttackChance: 0.7
-    }
-};
-
-const TAUNTS = [
-    "§c§oYou can run, but you can't hide...",
-    "§c§oI can hear your heartbeat.",
-    "§c§oGetting closer...",
-    "§c§oDid you think you could escape?",
-    "§c§oI see you.",
-    "§c§oYou're making this too easy.",
-    "§c§oRun faster.",
-    "§c§oThe hunt never ends.",
-    "§c§oI'm right behind you...",
-    "§c§oNowhere left to run."
-];
 
 let aiIntervalId = null;
 let state = "idle";
@@ -181,7 +64,6 @@ let parkourJumpAction = null;
 let parkourJumpDelay = 0;
 
 let bridgeState = null;
-
 let pillarState = null;
 
 let tempWaterBlocks = [];
@@ -192,8 +74,8 @@ let shieldActive = false;
 
 let isBuilding = false;
 
-function getProfile() {
-    return AI_PROFILES[getAILevel()] ?? AI_PROFILES.normal;
+function getProfileScaled() {
+    return getDifficultyScaledProfile(getAILevel());
 }
 
 export function getAIState() {
@@ -248,7 +130,9 @@ export function stopAI() {
     bridgeState = null;
     pillarState = null;
     smeltTimers.clear();
-    clearShield();
+    clearShield(getHunter(), shieldTimerId);
+    shieldTimerId = null;
+    shieldActive = false;
     tempWaterBlocks = [];
     mlgWaterBlocks = [];
     isBuilding = false;
@@ -274,51 +158,7 @@ export function forceChaseMode() {
     }
 }
 
-export function triggerAttack(hunter) {
-    if (cdAttackAnim > 0) return;
-    try {
-        hunter.triggerEvent("manhunt:set_action_attacking");
-        cdAttackAnim = getProfile().cdAttackAnim;
-        system.runTimeout(() => {
-            try { hunter.triggerEvent("manhunt:set_action_none"); } catch (_) { }
-        }, 8);
-    } catch (_) { }
-}
-
-export function rollCrit(hunter) {
-    const profile = getProfile();
-    try {
-        const vel = hunter.getVelocity();
-        if (vel.y < -0.08 || Math.random() < profile.critChance) {
-            return { isCrit: true, multiplier: profile.critMultiplier };
-        }
-    } catch (_) { }
-    return { isCrit: false, multiplier: 1.0 };
-}
-
-export function handleDamage(hunter, inventory, cause, attacker) {
-    if (shieldActive && inventory.hasShield() && Math.random() < getProfile().shieldBlockChance) {
-        try {
-            const hp = hunter.getComponent("minecraft:health");
-            if (hp) {
-                const heal = Math.min(2, hp.effectiveMax - hp.currentValue);
-                if (heal > 0) hp.setCurrentValue(hp.currentValue + heal);
-            }
-        } catch (_) { }
-        return;
-    }
-
-    if (inventory.isTempEquipActive()) {
-        inventory.finishTempEquip(hunter);
-    }
-    inventory.equipWeapon(hunter);
-
-    if ((cause === "projectile" || cause === "entityAttack") && inventory.hasShield()) {
-        equipShield(hunter);
-    }
-
-    forceChaseMode();
-}
+export { triggerAttack, rollCrit, handleDamage };
 
 function tick() {
     const hunter = getHunter();
@@ -356,7 +196,7 @@ function tick() {
         else fallTicks = 0;
     } catch (_) { }
 
-    cleanTempWater(hunter);
+    cleanTempWater(hunter, tempWaterBlocks, mlgWaterBlocks, inventory);
 
     handleNearbyBoats(hunter);
 
@@ -419,14 +259,15 @@ function tick() {
     if (miningTarget) {
         miningTarget.ticksLeft -= TICK_RATE;
         if (miningTarget.ticksLeft <= 0) {
-            finishMining(hunter, inventory);
+            finishMining(hunter, inventory, miningTarget);
+            miningTarget = null;
         }
         return;
     }
 
     try {
         const hp = hunter.getComponent("minecraft:health");
-        const profile = getProfile();
+        const profile = getProfileScaled();
         if (hp) {
             if (hp.currentValue <= profile.retreatHp && state !== "retreat") {
                 switchToRetreat(hunter);
@@ -464,11 +305,11 @@ function startBridgeSequence(hunter, inventory, action) {
         phaseTicksLeft: 2
     };
 
-    executeAction(hunter, inventory, {
+    executeBridgeStep(hunter, inventory, {
         type: "bridge_step",
         phase: "stop",
         blockType: action.blockType
-    });
+    }, hunter.dimension);
 }
 
 function tickBridgeState(hunter, inventory) {
@@ -490,23 +331,23 @@ function tickBridgeState(hunter, inventory) {
                 const bz = Math.floor(pos.z + bridgeState.direction.z * 1.0);
                 const by = Math.floor(pos.y) - 1;
 
-                executeAction(hunter, inventory, {
+                executeBridgeStep(hunter, inventory, {
                     type: "bridge_step",
                     phase: "place",
                     blockPos: { x: bx, y: by, z: bz },
                     blockType: bridgeState.blockType,
                     direction: bridgeState.direction
-                });
+                }, hunter.dimension);
                 bridgeState.blocksPlaced++;
             } catch (_) {
                 bridgeState = null;
             }
         } else {
-            executeAction(hunter, inventory, {
+            executeBridgeStep(hunter, inventory, {
                 type: "bridge_step",
                 phase: "stop",
                 blockType: bridgeState.blockType
-            });
+            }, hunter.dimension);
         }
 
     } else if (bridgeState.phase === "place") {
@@ -514,11 +355,11 @@ function tickBridgeState(hunter, inventory) {
             bridgeState.phase = "walk";
             bridgeState.phaseTicksLeft = 3;
 
-            executeAction(hunter, inventory, {
+            executeBridgeStep(hunter, inventory, {
                 type: "bridge_step",
                 phase: "walk",
                 direction: bridgeState.direction
-            });
+            }, hunter.dimension);
         }
 
     } else if (bridgeState.phase === "walk") {
@@ -528,11 +369,11 @@ function tickBridgeState(hunter, inventory) {
                 bridgeState.phase = "stop";
                 bridgeState.phaseTicksLeft = 1;
 
-                executeAction(hunter, inventory, {
+                executeBridgeStep(hunter, inventory, {
                     type: "bridge_step",
                     phase: "stop",
                     blockType: bridgeState.blockType
-                });
+                }, hunter.dimension);
             } else {
                 bridgeState = null;
                 stuckTicks = 0;
@@ -541,11 +382,11 @@ function tickBridgeState(hunter, inventory) {
                 if (inventory) inventory.equipWeapon(hunter);
             }
         } else {
-            executeAction(hunter, inventory, {
+            executeBridgeStep(hunter, inventory, {
                 type: "bridge_step",
                 phase: "walk",
                 direction: bridgeState.direction
-            });
+            }, hunter.dimension);
         }
     }
 }
@@ -563,13 +404,13 @@ function startPillarSequence(hunter, inventory, action) {
             lookDirection: action.lookDirection || { x: 1, z: 0 }
         };
 
-        executeAction(hunter, inventory, {
+        executePillarStep(hunter, inventory, {
             type: "pillar_step",
             phase: "jump",
             blockType: action.blockType,
             blockPos: action.blockPos,
             lookDirection: pillarState.lookDirection
-        });
+        }, hunter.dimension);
     } catch (_) {
         pillarState = null;
         exitBuildingMode(hunter);
@@ -599,13 +440,13 @@ function tickPillarState(hunter, inventory) {
                     const fy = pillarState.originalY;
                     const fz = Math.floor(pos.z);
 
-                    executeAction(hunter, inventory, {
+                    executePillarStep(hunter, inventory, {
                         type: "pillar_step",
                         phase: "place",
                         blockType: pillarState.blockType,
                         blockPos: { x: fx, y: fy, z: fz },
                         lookDirection: pillarState.lookDirection
-                    });
+                    }, hunter.dimension);
                 } else {
                     pillarState.phaseTicksLeft = 1;
                 }
@@ -622,7 +463,7 @@ function tickPillarState(hunter, inventory) {
 
 function checkSurvival(hunter, inventory, target) {
     if (!inventory) return null;
-    const profile = getProfile();
+    const profile = getProfileScaled();
 
     const lava = checkLavaEscape(hunter, inventory);
     if (lava) return lava;
@@ -639,7 +480,7 @@ function checkSurvival(hunter, inventory, target) {
         const cave = checkCaveEscape(hunter, inventory, stuckTicks);
         if (cave) {
             if (cave.type === "break_block") {
-                startMining(hunter, inventory, cave.blockPos);
+                miningTarget = startMining(hunter, inventory, cave.blockPos);
             }
             stuckTicks = 0;
             return cave;
@@ -671,7 +512,7 @@ function checkSurvival(hunter, inventory, target) {
 
 function tickChase(hunter, target, inventory) {
     try {
-        const profile = getProfile();
+        const profile = getProfileScaled();
         const hPos = hunter.location;
         const tPos = target.location;
         const dx = tPos.x - hPos.x;
@@ -709,7 +550,7 @@ function tickChase(hunter, target, inventory) {
         }
 
         if (inventory && cdEat <= 0) {
-            if (tryEat(hunter, inventory)) {
+            if (tryEat(hunter, inventory, profile.eatBelowHp)) {
                 cdEat = profile.cdEat * 2;
             } else {
                 cdEat = profile.cdEat;
@@ -717,24 +558,33 @@ function tickChase(hunter, target, inventory) {
         }
 
         if (inventory && cdShield <= 0 && combatDist < profile.attackRange + 1) {
-            checkShield(hunter, inventory);
+            if (inventory.hasShield() && !shieldActive) {
+                shieldTimerId = equipShield(hunter, 20);
+                shieldActive = true;
+                cdShield = profile.cdShield;
+
+                system.runTimeout(() => {
+                    shieldTimerId = null;
+                    shieldActive = false;
+                }, 20);
+            }
         }
 
         if (inventory && inventory.getBridgeBlockCount() < 4 && cdMining <= 0 && !miningTarget && dist > 15) {
             const gatherResult = inventory.findGatherTarget(hunter, profile.gatherSearchRadius);
             if (gatherResult) {
-                startMining(hunter, inventory, gatherResult.pos);
+                miningTarget = startMining(hunter, inventory, gatherResult.pos);
                 cdMining = profile.cdMining;
             }
         }
 
         if (combatDist <= profile.strafeRange && combatDist >= 1.5 && cdStrafe <= 0) {
-            doStrafe(hunter, combatTarget, combatDist);
+            strafeDir = doStrafe(hunter, combatTarget, combatDist, strafeDir);
             cdStrafe = profile.cdStrafe;
         }
 
         if (combatDist <= profile.comboRange && cdCombo <= 0 && comboHits > 0) {
-            triggerAttack(hunter);
+            cdAttackAnim = triggerAttack(hunter, cdAttackAnim);
             comboHits--;
             cdCombo = profile.cdCombo;
             try {
@@ -746,7 +596,10 @@ function tickChase(hunter, target, inventory) {
 
         if (combatDist >= profile.jumpAttackMin && combatDist <= profile.jumpAttackMax && cdJumpAttack <= 0) {
             if (Math.random() < profile.jumpAttackChance) {
-                doJumpAttack(hunter, combatTarget, combatDist);
+                if (doJumpAttack(hunter, combatTarget, combatDist)) {
+                    cdAttackAnim = triggerAttack(hunter, cdAttackAnim);
+                    comboHits = 3;
+                }
                 cdJumpAttack = profile.cdJumpAttack;
             }
         }
@@ -758,7 +611,10 @@ function tickChase(hunter, target, inventory) {
         }
 
         if (combatDist <= profile.lavaPourRange && inventory) {
-            tryPourLava(hunter, combatTarget, inventory);
+            const lavaEntry = tryPourLava(hunter, combatTarget, inventory);
+            if (lavaEntry) {
+                tempWaterBlocks.push(lavaEntry);
+            }
         }
 
         if (cdTaunt <= 0 && combatDist < 50) {
@@ -773,38 +629,9 @@ function tickChase(hunter, target, inventory) {
     } catch (_) { }
 }
 
-function getCombatTarget(hunter, primaryTarget) {
-    try {
-        const players = world.getAllPlayers();
-        const hunterPos = hunter.location;
-        let closest = primaryTarget;
-        let closestDist = distance2D(hunterPos, primaryTarget.location);
-
-        for (const player of players) {
-            if (player.id === primaryTarget.id) continue;
-            if (player.dimension.id !== hunter.dimension.id) continue;
-
-            const dist = distance2D(hunterPos, player.location);
-            if (dist <= 8 && dist < closestDist + 1) {
-                closest = player;
-                closestDist = dist;
-            }
-        }
-
-        return closest;
-    } catch (_) { }
-    return primaryTarget;
-}
-
-function distance2D(a, b) {
-    const dx = a.x - b.x;
-    const dz = a.z - b.z;
-    return Math.sqrt(dx * dx + dz * dz);
-}
-
 function tickPrep(hunter, target, inventory) {
     try {
-        const profile = getProfile();
+        const profile = getProfileScaled();
         prepTicks += TICK_RATE;
 
         const hPos = hunter.location;
@@ -821,7 +648,7 @@ function tickPrep(hunter, target, inventory) {
         if (cdMining <= 0 && !miningTarget) {
             const gatherTarget = findPrepGatherTarget(hunter, inventory, profile);
             if (gatherTarget) {
-                startMining(hunter, inventory, gatherTarget.pos);
+                miningTarget = startMining(hunter, inventory, gatherTarget.pos);
                 cdMining = profile.cdMining;
             }
         }
@@ -844,7 +671,7 @@ function tickPrep(hunter, target, inventory) {
         }
 
         if (cdEat <= 0) {
-            tryEat(hunter, inventory);
+            tryEat(hunter, inventory, profile.eatBelowHp);
             cdEat = profile.cdEat;
         }
 
@@ -855,310 +682,6 @@ function tickPrep(hunter, target, inventory) {
         }
 
     } catch (_) { }
-}
-
-function findPrepGatherTarget(hunter, inventory, profile) {
-    try {
-        const pos = hunter.location;
-        const dim = hunter.dimension;
-        const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
-        const feetY = fy - 1;
-
-        const logCount = inventory.countItem("minecraft:oak_log") + inventory.countItem("minecraft:oak_planks") / 4;
-        const stoneCount = inventory.countItem("minecraft:cobblestone");
-        const ironCount = inventory.countItem("minecraft:raw_iron") + inventory.countItem("minecraft:iron_ingot");
-
-        let targetBlocks = [];
-        if (logCount < profile.prepLogTarget) {
-            targetBlocks.push(
-                "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log",
-                "minecraft:jungle_log", "minecraft:acacia_log", "minecraft:dark_oak_log",
-                "minecraft:mangrove_log", "minecraft:cherry_log"
-            );
-        }
-        if (stoneCount < profile.prepStoneTarget) {
-            targetBlocks.push("minecraft:stone", "minecraft:cobblestone");
-        }
-        if (ironCount < profile.prepIronTarget) {
-            targetBlocks.push("minecraft:iron_ore", "minecraft:deepslate_iron_ore");
-        }
-        if (inventory.getBridgeBlockCount() < 32) {
-            targetBlocks.push("minecraft:dirt", "minecraft:grass_block", "minecraft:gravel", "minecraft:sand");
-        }
-
-        if (targetBlocks.length === 0) return null;
-
-        let closest = null;
-        let closestDist = Infinity;
-
-        for (let x = -profile.prepGatherRadius; x <= profile.prepGatherRadius; x++) {
-            for (let y = -2; y <= 3; y++) {
-                for (let z = -profile.prepGatherRadius; z <= profile.prepGatherRadius; z++) {
-                    const bx = fx + x;
-                    const by = fy + y;
-                    const bz = fz + z;
-
-                    if (by === feetY && bx === fx && bz === fz) continue;
-
-                    try {
-                        const block = dim.getBlock({ x: bx, y: by, z: bz });
-                        if (block && targetBlocks.includes(block.typeId)) {
-                            const dist = Math.abs(x) + Math.abs(y) + Math.abs(z);
-                            if (dist < closestDist) {
-                                closestDist = dist;
-                                closest = { block, typeId: block.typeId, pos: { x: bx, y: by, z: bz } };
-                            }
-                        }
-                    } catch (_) { }
-                }
-            }
-        }
-        return closest;
-    } catch (_) { }
-    return null;
-}
-
-function tickRetreat(hunter, target, inventory) {
-    if (!inventory) return;
-
-    tryEat(hunter, inventory);
-
-    try {
-        const hPos = hunter.location;
-        const tPos = target.location;
-        const dx = hPos.x - tPos.x;
-        const dz = hPos.z - tPos.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (dist < 10 && dist > 0.5) {
-            const nx = dx / dist;
-            const nz = dz / dist;
-            hunter.applyImpulse({ x: nx * 0.06, y: 0, z: nz * 0.06 });
-        }
-    } catch (_) { }
-}
-
-function doStrafe(hunter, target, dist) {
-    try {
-        const vel = hunter.getVelocity();
-        if (Math.abs(vel.y) > 0.05) return;
-
-        const hPos = hunter.location;
-        const tPos = target.location;
-        const dx = tPos.x - hPos.x;
-        const dz = tPos.z - hPos.z;
-
-        if (Math.random() < 0.15) strafeDir *= -1;
-
-        const perpX = -dz / dist * strafeDir;
-        const perpZ = dx / dist * strafeDir;
-
-        const fwdX = (dx / dist) * 0.1;
-        const fwdZ = (dz / dist) * 0.1;
-
-        const dim = hunter.dimension;
-        const checkX = Math.floor(hPos.x + perpX * 1.5);
-        const checkZ = Math.floor(hPos.z + perpZ * 1.5);
-        const checkY = Math.floor(hPos.y) - 1;
-
-        const blockBelow = dim.getBlock({ x: checkX, y: checkY, z: checkZ });
-        const blockAt = dim.getBlock({ x: checkX, y: checkY + 1, z: checkZ });
-
-        if (!blockBelow || blockBelow.typeId === "minecraft:air" ||
-            blockBelow.typeId === "minecraft:water" || blockBelow.typeId === "minecraft:lava") {
-            return;
-        }
-
-        if (blockAt && blockAt.typeId !== "minecraft:air" &&
-            blockAt.typeId !== "minecraft:tall_grass" && blockAt.typeId !== "minecraft:short_grass") {
-            return;
-        }
-
-        hunter.applyImpulse({ x: perpX * 0.12 + fwdX, y: 0, z: perpZ * 0.12 + fwdZ });
-    } catch (_) { }
-}
-
-function doJumpAttack(hunter, target, dist) {
-    try {
-        const hPos = hunter.location;
-        const tPos = target.location;
-        const vel = hunter.getVelocity();
-
-        if (vel.y > 0.05 || vel.y < -0.3) return;
-
-        const dx = tPos.x - hPos.x;
-        const dz = tPos.z - hPos.z;
-        const nx = dx / dist;
-        const nz = dz / dist;
-
-        hunter.applyImpulse({ x: nx * 0.45, y: 0.45, z: nz * 0.45 });
-        triggerAttack(hunter);
-        comboHits = 3;
-    } catch (_) { }
-}
-
-function doSprintJump(hunter, target) {
-    try {
-        const hPos = hunter.location;
-        const tPos = target.location;
-        const vel = hunter.getVelocity();
-
-        const dx = tPos.x - hPos.x;
-        const dz = tPos.z - hPos.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-
-        if (vel.y > 0.05 || vel.y < -0.1) return false;
-        if (Math.sqrt(vel.x ** 2 + vel.z ** 2) < 0.1) return false;
-
-        const nx = dx / dist;
-        const nz = dz / dist;
-
-        hunter.applyImpulse({ x: nx * 0.15, y: 0.38, z: nz * 0.15 });
-        return true;
-    } catch (_) { }
-    return false;
-}
-
-function tryPourLava(hunter, target, inventory) {
-    if (!inventory.hasItem("minecraft:lava_bucket")) return;
-    try {
-        const tPos = target.location;
-        const lavaPos = { x: Math.floor(tPos.x), y: Math.floor(tPos.y), z: Math.floor(tPos.z) };
-        const block = hunter.dimension.getBlock(lavaPos);
-        if (block?.typeId === "minecraft:air") {
-            inventory.showItemInHand(hunter, "minecraft:lava_bucket", "placing", 15);
-            block.setPermutation(BlockPermutation.resolve("minecraft:lava"));
-            inventory.removeItem("minecraft:lava_bucket", 1);
-            inventory.addItem("minecraft:bucket", 1);
-            tempWaterBlocks.push({
-                pos: { ...lavaPos },
-                removeTick: system.currentTick + 60
-            });
-        }
-    } catch (_) { }
-}
-
-function tryEat(hunter, inventory) {
-    if (inventory.isTempEquipActive()) return false;
-    try {
-        const hp = hunter.getComponent("minecraft:health");
-        if (!hp || hp.currentValue >= getProfile().eatBelowHp) return false;
-
-        const food = inventory.getBestFood();
-        if (!food) return false;
-
-        inventory.showItemInHand(hunter, food, "eating", 32);
-
-        system.runTimeout(() => {
-            try {
-                const hunger = inventory.getFoodHunger(food);
-                inventory.removeItem(food, 1);
-                const h = hunter.getComponent("minecraft:health");
-                if (h) {
-                    const heal = Math.min(hunger, h.effectiveMax - h.currentValue);
-                    if (heal > 0) h.setCurrentValue(h.currentValue + heal);
-                }
-            } catch (_) { }
-        }, 32);
-
-        return true;
-    } catch (_) { }
-    return false;
-}
-
-function checkShield(hunter, inventory) {
-    if (!inventory.hasShield()) return;
-    if (shieldTimerId !== null || shieldActive) return;
-
-    try {
-        hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 minecraft:shield 1`);
-        cdShield = getProfile().cdShield;
-        shieldActive = true;
-
-        shieldTimerId = system.runTimeout(() => {
-            try { hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 air 0`); } catch (_) { }
-            shieldTimerId = null;
-            shieldActive = false;
-        }, 20);
-    } catch (_) { }
-}
-
-function equipShield(hunter) {
-    const inventory = getInventory();
-    if (!inventory || !inventory.hasShield()) return;
-    if (shieldTimerId !== null || shieldActive) return;
-
-    try {
-        hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 minecraft:shield 1`);
-        shieldActive = true;
-        cdShield = getProfile().cdShield;
-
-        if (shieldTimerId !== null) {
-            try { system.clearRun(shieldTimerId); } catch (_) { }
-        }
-        shieldTimerId = system.runTimeout(() => {
-            try { hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 air 0`); } catch (_) { }
-            shieldTimerId = null;
-            shieldActive = false;
-        }, 40);
-    } catch (_) { }
-}
-
-function clearShield() {
-    if (shieldTimerId !== null) {
-        try { system.clearRun(shieldTimerId); } catch (_) { }
-        shieldTimerId = null;
-    }
-    shieldActive = false;
-
-    const hunter = getHunter();
-    if (hunter) {
-        try { hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 air 0`); } catch (_) { }
-    }
-}
-
-function startMining(hunter, inventory, blockPos) {
-    try {
-        const dim = hunter.dimension;
-        const block = dim.getBlock(blockPos);
-        if (!block || block.typeId === "minecraft:air") return;
-
-        const typeId = block.typeId;
-        const duration = inventory.getMiningDuration(typeId);
-        if (duration <= 0) return;
-
-        const tool = inventory.getMiningTool(typeId);
-        if (tool) {
-            inventory.showItemInHand(hunter, tool, "mining", duration + 5);
-        } else {
-            try { hunter.triggerEvent("manhunt:set_action_mining"); } catch (_) { }
-        }
-
-        miningTarget = {
-            pos: { x: blockPos.x, y: blockPos.y, z: blockPos.z },
-            typeId: typeId,
-            ticksLeft: duration
-        };
-    } catch (_) { }
-}
-
-function finishMining(hunter, inventory) {
-    if (!miningTarget) return;
-
-    try {
-        const dim = hunter.dimension;
-        const block = dim.getBlock(miningTarget.pos);
-        if (block && block.typeId === miningTarget.typeId) {
-            block.setPermutation(BlockPermutation.resolve("minecraft:air"));
-            const drop = inventory.getMiningDrop(miningTarget.typeId);
-            if (drop) {
-                inventory.addItem(drop.typeId, drop.amount);
-            }
-        }
-    } catch (_) { }
-
-    try { hunter.triggerEvent("manhunt:set_action_none"); } catch (_) { }
-    miningTarget = null;
 }
 
 function switchToChase(hunter) {
@@ -1216,81 +739,8 @@ function switchToRetreat(hunter) {
 function sendTaunt(target) {
     try {
         if (!getEnableTaunts()) return;
-        target.sendMessage(TAUNTS[Math.floor(Math.random() * TAUNTS.length)]);
+        target.sendMessage(getRandomTaunt());
     } catch (_) { }
-}
-
-function placeUtility(hunter, blockType) {
-    try {
-        const dim = hunter.dimension;
-        const pos = hunter.location;
-        const offsets = [
-            { x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 },
-            { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }
-        ];
-        for (const off of offsets) {
-            const p = {
-                x: Math.floor(pos.x) + off.x,
-                y: Math.floor(pos.y),
-                z: Math.floor(pos.z) + off.z
-            };
-            const b = dim.getBlock(p);
-            if (b?.typeId === "minecraft:air") {
-                b.setPermutation(BlockPermutation.resolve(blockType));
-                return;
-            }
-        }
-    } catch (_) { }
-}
-
-function cleanTempWater(hunter) {
-    const now = system.currentTick;
-    const inventory = getInventory();
-
-    if (mlgWaterBlocks.length > 0 && inventory) {
-        try {
-            const vel = hunter.getVelocity();
-            const pos = hunter.location;
-            const landed = Math.abs(vel.y) < 0.15 && Math.abs(vel.x) < 0.3 && Math.abs(vel.z) < 0.3;
-
-            if (landed) {
-                for (let i = mlgWaterBlocks.length - 1; i >= 0; i--) {
-                    const entry = mlgWaterBlocks[i];
-                    const dx = Math.abs(Math.floor(pos.x) - entry.pos.x);
-                    const dz = Math.abs(Math.floor(pos.z) - entry.pos.z);
-                    const dy = Math.abs(Math.floor(pos.y) - entry.pos.y);
-                    if (dx <= 2 && dz <= 2 && dy <= 3) {
-                        try {
-                            const dim = hunter.dimension;
-                            const b = dim.getBlock(entry.pos);
-                            if (b && (b.typeId === "minecraft:water" || b.typeId === "minecraft:flowing_water")) {
-                                b.setPermutation(BlockPermutation.resolve("minecraft:air"));
-                                inventory.removeItem("minecraft:bucket", 1);
-                                inventory.addItem("minecraft:water_bucket", 1);
-                                inventory.equipWeapon(hunter);
-                            }
-                        } catch (_) { }
-                        const idx = tempWaterBlocks.findIndex(e => e.pos.x === entry.pos.x && e.pos.y === entry.pos.y && e.pos.z === entry.pos.z);
-                        if (idx !== -1) tempWaterBlocks.splice(idx, 1);
-                        mlgWaterBlocks.splice(i, 1);
-                    }
-                }
-            }
-        } catch (_) { }
-    }
-
-    for (let i = tempWaterBlocks.length - 1; i >= 0; i--) {
-        if (now >= tempWaterBlocks[i].removeTick) {
-            try {
-                const dim = hunter.dimension;
-                const b = dim.getBlock(tempWaterBlocks[i].pos);
-                if (b && (b.typeId === "minecraft:water" || b.typeId === "minecraft:flowing_water" || b.typeId === "minecraft:lava")) {
-                    b.setPermutation(BlockPermutation.resolve("minecraft:air"));
-                }
-            } catch (_) { }
-            tempWaterBlocks.splice(i, 1);
-        }
-    }
 }
 
 function handleNearbyBoats(hunter) {
@@ -1314,9 +764,7 @@ function handleNearbyBoats(hunter) {
         for (const boat of boats) {
             try {
                 boat.kill();
-
                 dim.playSound("random.break", boat.location, { volume: 0.5, pitch: 1.0 });
-
                 dim.spawnParticle("minecraft:block_destroy", boat.location, {
                     block: "minecraft:oak_planks"
                 });
