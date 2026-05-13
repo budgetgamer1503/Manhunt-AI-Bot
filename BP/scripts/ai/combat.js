@@ -8,18 +8,18 @@
  * Extracted from state_machine.js for v0.7.0 modular refactor.
  */
 
-import { system, BlockPermutation } from "@minecraft/server";
+import { system, BlockPermutation, world } from "@minecraft/server";
 import { getProfile } from "./profiles.js";
-import { getInventory } from "../entity_manager.js";
+import { getInventory, getAILevel } from "../entity_manager.js";
 
 /**
  * Trigger the attack animation on the hunter.
  */
-export function triggerAttack(hunter, cdAttackAnim) {
+export function triggerAttack(hunter, cdAttackAnim, aiLevel = "normal") {
     if (cdAttackAnim > 0) return;
     try {
         hunter.triggerEvent("manhunt:set_action_attacking");
-        const profile = getProfile();
+        const profile = getProfile(aiLevel);
         const animCd = profile.cdAttackAnim;
         system.runTimeout(() => {
             try { hunter.triggerEvent("manhunt:set_action_none"); } catch (_) { }
@@ -32,8 +32,8 @@ export function triggerAttack(hunter, cdAttackAnim) {
 /**
  * Roll for a critical hit based on velocity and profile crit chance.
  */
-export function rollCrit(hunter) {
-    const profile = getProfile();
+export function rollCrit(hunter, aiLevel = "normal") {
+    const profile = getProfile(aiLevel);
     try {
         const vel = hunter.getVelocity();
         if (vel.y < -0.08 || Math.random() < profile.critChance) {
@@ -250,7 +250,6 @@ export function handleDamage(hunter, inventory, cause, shieldBlockChance, shield
  */
 export function getCombatTarget(hunter, primaryTarget) {
     try {
-        const { world } = require("@minecraft/server");
         const players = world.getAllPlayers();
         const hunterPos = hunter.location;
         let closest = primaryTarget;

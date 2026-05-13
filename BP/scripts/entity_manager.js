@@ -231,7 +231,13 @@ export function spawn(player, config, playerLoadout = null) {
         hunterInventoryMode = config.inventoryMode || "starter";
         hunterCreatorKitId = config.creatorKitId || DEFAULT_CREATOR_KIT_ID;
         hunterPrepBehavior = config.prepBehavior || "hybrid";
+        hunterWinCondition = config.winCondition || "infinite";
+        hunterMaxLives = config.maxLives || 3;
+        hunterTimeLimitMinutes = config.timeLimitMinutes || 30;
+        hunterKillTarget = config.killTarget || 3;
         targetPlayer = player;
+        targetPlayers.clear();
+        targetPlayers.add(player.id);
         hunterDeathCount = 0;
 
         hunterInventory = new HunterInventory();
@@ -241,8 +247,12 @@ export function spawn(player, config, playerLoadout = null) {
             try { hunterInventory.equipBest(hunter); } catch (_) { }
         }, 5);
 
+        debug(MODULE, `Hunter spawned: ${hunterName} (AI: ${hunterAILevel}, Win: ${hunterWinCondition})`);
+
         return hunter;
-    } catch (_) { }
+    } catch (e) {
+        error(MODULE, "Failed to spawn hunter", e);
+    }
     return null;
 }
 
@@ -265,6 +275,7 @@ export function despawn(dropItems = false) {
     activeHunter = null;
     hunterInventory = null;
     targetPlayer = null;
+    targetPlayers.clear();
     hunterName = "Hunter";
     hunterSkinId = 0;
     hunterEnableTaunts = true;
@@ -277,6 +288,10 @@ export function despawn(dropItems = false) {
     hunterDeathCount = 0;
     lastKnownPos = null;
     savedInventory = null;
+    hunterWinCondition = "infinite";
+    hunterMaxLives = 3;
+    hunterTimeLimitMinutes = 30;
+    hunterKillTarget = 3;
 }
 
 export function canRespawn() {
