@@ -1,11 +1,6 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
- */
-
-/**
- * Chat Commands System (v0.7.0).
- * Provides /manhunt commands for managing the hunt via chat.
  */
 
 import { world, system } from "@minecraft/server";
@@ -18,28 +13,19 @@ import { getAIState, stopAI } from "./state_machine.js";
 import { getHuntState, getRemainingTimeMinutes, getRemainingLives, getRemainingKills } from "./win_conditions.js";
 import { getStats, getStatsSummary } from "./stats.js";
 import { getScalingDescription } from "./difficulty_scaling.js";
-
-/**
- * Register the /manhunt command prefix handler.
- * Call this once during world initialization.
- */
 export function registerCommands() {
     world.beforeEvents.chatSend.subscribe((event) => {
         const message = event.message.trim();
         if (!message.startsWith("/manhunt") && !message.startsWith("!manhunt")) return;
-
         event.cancel = true;
-
         const player = event.sender;
         const args = message.split(/\s+/);
         const subcommand = args[1]?.toLowerCase() || "help";
-
         system.run(() => {
             handleCommand(player, subcommand, args.slice(2));
         });
     });
 }
-
 function handleCommand(player, subcommand, args) {
     switch (subcommand) {
         case "help":
@@ -65,7 +51,6 @@ function handleCommand(player, subcommand, args) {
             break;
     }
 }
-
 function showHelp(player) {
     player.sendMessage([
         `§l§6=== MANHUNT BOT COMMANDS ===`,
@@ -77,12 +62,10 @@ function showHelp(player) {
         `§e/manhunt despawn §7- Despawn the active hunter`
     ].join("\n"));
 }
-
 function showStatus(player) {
     const huntState = getHuntState();
     const hunter = getHunter();
     const target = getTarget();
-
     const lines = [
         `§l§6=== HUNT STATUS ===`,
         `§fActive: ${huntState.active ? "§aYes" : "§cNo"}`,
@@ -94,7 +77,6 @@ function showStatus(player) {
         `§fDeaths: §c${getDeathCount()}`,
         `§fWin Condition: §6${huntState.winCondition}`,
     ];
-
     if (huntState.winCondition === "time_limit") {
         const remaining = getRemainingTimeMinutes();
         lines.push(`§fTime Remaining: §e${remaining.toFixed(1)}m`);
@@ -105,37 +87,29 @@ function showStatus(player) {
         const remaining = getRemainingKills();
         lines.push(`§fKills Needed: §c${remaining}`);
     }
-
     lines.push(`§fScaling: §7${getScalingDescription(getAILevel(), getDeathCount(), huntState.huntStartTick)}`);
-
     player.sendMessage(lines.join("\n"));
 }
-
 function showStats(player) {
     player.sendMessage(getStatsSummary());
 }
-
 function toggleDebug(player) {
     const enabled = !isDebugEnabled();
     setDebugEnabled(enabled);
     player.sendMessage(`§eDebug logging: ${enabled ? "§aEnabled" : "§cDisabled"}`);
 }
-
 function handleDespawn(player) {
     if (!isActive() && !isRespawning()) {
         player.sendMessage("§7No active hunter to despawn.");
         return;
     }
-
     stopAI();
     despawn(true);
     player.sendMessage("§7The hunter has been despawned.");
 }
-
 function showInfo(player) {
     const config = getCurrentConfigSnapshot();
     const hunter = getHunter();
-
     player.sendMessage([
         `§l§6=== HUNTER INFO ===`,
         `§fName: §e${config.name}`,

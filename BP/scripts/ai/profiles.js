@@ -1,11 +1,6 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
- */
-
-/**
- * AI difficulty profiles and taunt definitions.
- * Extracted from state_machine.js for v0.7.0 modular refactor.
  */
 
 export const AI_PROFILES = {
@@ -133,7 +128,6 @@ export const AI_PROFILES = {
         jumpAttackChance: 0.7
     }
 };
-
 export const TAUNTS = [
     "§c§oYou can run, but you can't hide...",
     "§c§oI can hear your heartbeat.",
@@ -146,20 +140,9 @@ export const TAUNTS = [
     "§c§oI'm right behind you...",
     "§c§oNowhere left to run."
 ];
-
-/**
- * Get the AI profile for the current difficulty level.
- * @param {string} aiLevel - "easy", "normal", or "expert"
- * @returns {object} The AI profile object
- */
 export function getProfile(aiLevel) {
     return AI_PROFILES[aiLevel] ?? AI_PROFILES.normal;
 }
-
-/**
- * Get a random taunt message.
- * @returns {string} A formatted taunt string
- */
 export function getRandomTaunt() {
     return TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
 }

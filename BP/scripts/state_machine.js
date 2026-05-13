@@ -1,11 +1,6 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
- */
-
-/**
- * AI State Machine — Orchestrator (v0.7.0 refactor).
- * Delegates combat, gathering, building, and survival to ai/ submodules.
  */
 
 import { system, world } from "@minecraft/server";
@@ -34,57 +29,39 @@ import {
     tickRetreat, cleanTempWater
 } from "./ai/survival.js";
 import { getDifficultyScaledProfile } from "./difficulty_scaling.js";
-
 const TICK_RATE = 2;
-
 let aiIntervalId = null;
 let state = "idle";
-
 let tickCounter = 0;
-
 let lastX = 0, lastZ = 0;
 let blocksTraveled = 0;
 let stuckTicks = 0;
-
 let fallTicks = 0;
-
 let cdCombo = 0, cdJumpAttack = 0, cdStrafe = 0, cdSprintJump = 0;
 let cdAttackAnim = 0, cdCatchup = 0, cdShield = 0;
 let comboHits = 0;
 let strafeDir = 1;
-
 let cdEat = 0, cdTaunt = 0, cdMining = 0, cdParkour = 0, cdPlace = 0;
-
 let prepTicks = 0;
 let smeltTimers = new Map();
-
 let miningTarget = null;
-
 let parkourJumpAction = null;
 let parkourJumpDelay = 0;
-
 let bridgeState = null;
 let pillarState = null;
-
 let tempWaterBlocks = [];
 let mlgWaterBlocks = [];
-
 let shieldTimerId = null;
 let shieldActive = false;
-
 let isBuilding = false;
-
 function getProfileScaled() {
     return getDifficultyScaledProfile(getAILevel());
 }
-
 export function getAIState() {
     return state;
 }
-
 export function startAI() {
     if (aiIntervalId !== null) return;
-
     state = "chase";
     tickCounter = 0;
     blocksTraveled = 0;
@@ -100,7 +77,6 @@ export function startAI() {
     tempWaterBlocks = [];
     mlgWaterBlocks = [];
     isBuilding = false;
-
     const hunter = getHunter();
     if (hunter) {
         try {
@@ -108,16 +84,13 @@ export function startAI() {
             lastX = p.x; lastZ = p.z;
         } catch (_) { }
         try { hunter.triggerEvent("manhunt:enter_chase"); } catch (_) { }
-
         const inv = getInventory();
         if (inv) try { inv.equipBest(hunter); } catch (_) { }
     }
-
     aiIntervalId = system.runInterval(() => {
         try { tick(); } catch (_) { }
     }, TICK_RATE);
 }
-
 export function stopAI() {
     if (aiIntervalId !== null) {
         system.clearRun(aiIntervalId);
@@ -136,11 +109,9 @@ export function stopAI() {
     tempWaterBlocks = [];
     mlgWaterBlocks = [];
     isBuilding = false;
-
     const inv = getInventory();
     if (inv) inv.resetTempEquip();
 }
-
 export function forceChaseMode() {
     if (isBuilding) {
         exitBuildingMode();
@@ -157,59 +128,44 @@ export function forceChaseMode() {
         }
     }
 }
-
 export { triggerAttack, rollCrit, handleDamage };
-
 function tick() {
     const hunter = getHunter();
     const target = getTarget();
     const inventory = getInventory();
-
     if (!hunter || !target) {
         if (!hunter && target) stopAI();
         if (hunter && !target) { despawn(true); stopAI(); }
         return;
     }
-
     tickCounter++;
-
     if (inventory) inventory.tickTempEquip(hunter);
-
     tickCooldowns();
-
     try {
         const pos = hunter.location;
         const dx = pos.x - lastX;
         const dz = pos.z - lastZ;
         const moved = Math.sqrt(dx * dx + dz * dz);
         blocksTraveled += moved;
-
         if (moved < 0.05) stuckTicks++;
         else stuckTicks = 0;
-
         lastX = pos.x; lastZ = pos.z;
     } catch (_) { }
-
     try {
         const vel = hunter.getVelocity();
         if (vel.y < -0.5) fallTicks++;
         else fallTicks = 0;
     } catch (_) { }
-
     cleanTempWater(hunter, tempWaterBlocks, mlgWaterBlocks, inventory);
-
     handleNearbyBoats(hunter);
-
     if (bridgeState) {
         tickBridgeState(hunter, inventory);
         return;
     }
-
     if (pillarState) {
         tickPillarState(hunter, inventory);
         return;
     }
-
     if (parkourJumpAction && parkourJumpDelay > 0) {
         parkourJumpDelay--;
         if (parkourJumpDelay <= 0) {
@@ -224,7 +180,6 @@ function tick() {
         }
         return;
     }
-
     const survivalAction = checkSurvival(hunter, inventory, target);
     if (survivalAction) {
         if (survivalAction.type === "bridge_step") {
@@ -235,9 +190,7 @@ function tick() {
             startPillarSequence(hunter, inventory, survivalAction);
             return;
         }
-
         executeAction(hunter, inventory, survivalAction);
-
         if (survivalAction.type === "place_water") {
             const entry = {
                 pos: { ...survivalAction.blockPos },
@@ -255,7 +208,6 @@ function tick() {
         }
         return;
     }
-
     if (miningTarget) {
         miningTarget.ticksLeft -= TICK_RATE;
         if (miningTarget.ticksLeft <= 0) {
@@ -264,7 +216,6 @@ function tick() {
         }
         return;
     }
-
     try {
         const hp = hunter.getComponent("minecraft:health");
         const profile = getProfileScaled();
@@ -276,7 +227,6 @@ function tick() {
             }
         }
     } catch (_) { }
-
     switch (state) {
         case "chase":
             tickChase(hunter, target, inventory);
@@ -292,10 +242,8 @@ function tick() {
             break;
     }
 }
-
 function startBridgeSequence(hunter, inventory, action) {
     enterBuildingMode(hunter);
-
     bridgeState = {
         phase: "stop",
         direction: action.direction,
@@ -304,33 +252,27 @@ function startBridgeSequence(hunter, inventory, action) {
         gapSize: action.gapSize || 6,
         phaseTicksLeft: 2
     };
-
     executeBridgeStep(hunter, inventory, {
         type: "bridge_step",
         phase: "stop",
         blockType: action.blockType
     }, hunter.dimension);
 }
-
 function tickBridgeState(hunter, inventory) {
     if (!bridgeState || !inventory) {
         bridgeState = null;
         return;
     }
-
     bridgeState.phaseTicksLeft--;
-
     if (bridgeState.phase === "stop") {
         if (bridgeState.phaseTicksLeft <= 0) {
             bridgeState.phase = "place";
             bridgeState.phaseTicksLeft = 1;
-
             try {
                 const pos = hunter.location;
                 const bx = Math.floor(pos.x + bridgeState.direction.x * 1.0);
                 const bz = Math.floor(pos.z + bridgeState.direction.z * 1.0);
                 const by = Math.floor(pos.y) - 1;
-
                 executeBridgeStep(hunter, inventory, {
                     type: "bridge_step",
                     phase: "place",
@@ -349,26 +291,22 @@ function tickBridgeState(hunter, inventory) {
                 blockType: bridgeState.blockType
             }, hunter.dimension);
         }
-
     } else if (bridgeState.phase === "place") {
         if (bridgeState.phaseTicksLeft <= 0) {
             bridgeState.phase = "walk";
             bridgeState.phaseTicksLeft = 3;
-
             executeBridgeStep(hunter, inventory, {
                 type: "bridge_step",
                 phase: "walk",
                 direction: bridgeState.direction
             }, hunter.dimension);
         }
-
     } else if (bridgeState.phase === "walk") {
         if (bridgeState.phaseTicksLeft <= 0) {
             if (bridgeState.blocksPlaced < bridgeState.gapSize &&
                 inventory.hasItem(bridgeState.blockType)) {
                 bridgeState.phase = "stop";
                 bridgeState.phaseTicksLeft = 1;
-
                 executeBridgeStep(hunter, inventory, {
                     type: "bridge_step",
                     phase: "stop",
@@ -390,11 +328,9 @@ function tickBridgeState(hunter, inventory) {
         }
     }
 }
-
 function startPillarSequence(hunter, inventory, action) {
     try {
         enterBuildingMode(hunter);
-
         pillarState = {
             phase: "jump",
             blockType: action.blockType,
@@ -403,7 +339,6 @@ function startPillarSequence(hunter, inventory, action) {
             jumpTicks: 0,
             lookDirection: action.lookDirection || { x: 1, z: 0 }
         };
-
         executePillarStep(hunter, inventory, {
             type: "pillar_step",
             phase: "jump",
@@ -416,30 +351,24 @@ function startPillarSequence(hunter, inventory, action) {
         exitBuildingMode(hunter);
     }
 }
-
 function tickPillarState(hunter, inventory) {
     if (!pillarState || !inventory) {
         pillarState = null;
         return;
     }
-
     pillarState.phaseTicksLeft--;
-
     if (pillarState.phase === "jump") {
         if (pillarState.phaseTicksLeft <= 0) {
             try {
                 const vel = hunter.getVelocity();
                 const pos = hunter.location;
                 pillarState.jumpTicks++;
-
                 if (pos.y > pillarState.originalY + 0.35 || vel.y <= 0.18 || pillarState.jumpTicks >= 4) {
                     pillarState.phase = "place";
                     pillarState.phaseTicksLeft = 1;
-
                     const fx = Math.floor(pos.x);
                     const fy = pillarState.originalY;
                     const fz = Math.floor(pos.z);
-
                     executePillarStep(hunter, inventory, {
                         type: "pillar_step",
                         phase: "place",
@@ -460,22 +389,17 @@ function tickPillarState(hunter, inventory) {
         exitBuildingMode(hunter);
     }
 }
-
 function checkSurvival(hunter, inventory, target) {
     if (!inventory) return null;
     const profile = getProfileScaled();
-
     const lava = checkLavaEscape(hunter, inventory);
     if (lava) return lava;
-
     const mlg = checkWaterMLG(hunter, inventory, fallTicks);
     if (mlg) return mlg;
-
     if (cdPlace <= 0) {
         const clutch = checkBlockClutch(hunter, inventory);
         if (clutch) { cdPlace = profile.cdPlace; return clutch; }
     }
-
     if (cdPlace <= 0) {
         const cave = checkCaveEscape(hunter, inventory, stuckTicks);
         if (cave) {
@@ -486,17 +410,14 @@ function checkSurvival(hunter, inventory, target) {
             return cave;
         }
     }
-
     if (cdParkour <= 0) {
         const park = checkParkourJump(hunter);
         if (park) { cdParkour = profile.cdParkour; return park; }
     }
-
     if (target && cdPlace <= 0) {
         const pillar = checkPillarUp(hunter, inventory, target);
         if (pillar) { cdPlace = profile.cdPlace * 4; return pillar; }
     }
-
     if (target && cdPlace <= 0 && stuckTicks >= 15) {
         const bridge = checkBridging(hunter, inventory, target, stuckTicks);
         if (bridge) {
@@ -506,10 +427,8 @@ function checkSurvival(hunter, inventory, target) {
             return bridge;
         }
     }
-
     return null;
 }
-
 function tickChase(hunter, target, inventory) {
     try {
         const profile = getProfileScaled();
@@ -523,13 +442,11 @@ function tickChase(hunter, target, inventory) {
         const combatDx = combatPos.x - hPos.x;
         const combatDz = combatPos.z - hPos.z;
         const combatDist = Math.sqrt(combatDx * combatDx + combatDz * combatDz);
-
         if (dist > profile.catchupDistance && cdCatchup <= 0) {
             const nx = dx / dist;
             const nz = dz / dist;
             const newX = tPos.x - nx * profile.catchupPlaceDist;
             const newZ = tPos.z - nz * profile.catchupPlaceDist;
-
             try {
                 const dim = hunter.dimension;
                 let newY = tPos.y;
@@ -544,11 +461,9 @@ function tickChase(hunter, target, inventory) {
                 cdCatchup = profile.cdCatchup;
             } catch (_) { }
         }
-
         if (inventory && !inventory.isTempEquipActive()) {
             inventory.equipWeapon(hunter);
         }
-
         if (inventory && cdEat <= 0) {
             if (tryEat(hunter, inventory, profile.eatBelowHp)) {
                 cdEat = profile.cdEat * 2;
@@ -556,20 +471,17 @@ function tickChase(hunter, target, inventory) {
                 cdEat = profile.cdEat;
             }
         }
-
         if (inventory && cdShield <= 0 && combatDist < profile.attackRange + 1) {
             if (inventory.hasShield() && !shieldActive) {
                 shieldTimerId = equipShield(hunter, 20);
                 shieldActive = true;
                 cdShield = profile.cdShield;
-
                 system.runTimeout(() => {
                     shieldTimerId = null;
                     shieldActive = false;
                 }, 20);
             }
         }
-
         if (inventory && inventory.getBridgeBlockCount() < 4 && cdMining <= 0 && !miningTarget && dist > 15) {
             const gatherResult = inventory.findGatherTarget(hunter, profile.gatherSearchRadius);
             if (gatherResult) {
@@ -577,12 +489,10 @@ function tickChase(hunter, target, inventory) {
                 cdMining = profile.cdMining;
             }
         }
-
         if (combatDist <= profile.strafeRange && combatDist >= 1.5 && cdStrafe <= 0) {
             strafeDir = doStrafe(hunter, combatTarget, combatDist, strafeDir);
             cdStrafe = profile.cdStrafe;
         }
-
         if (combatDist <= profile.comboRange && cdCombo <= 0 && comboHits > 0) {
             cdAttackAnim = triggerAttack(hunter, cdAttackAnim);
             comboHits--;
@@ -593,7 +503,6 @@ function tickChase(hunter, target, inventory) {
                 hunter.applyImpulse({ x: nx * 0.12, y: 0, z: nz * 0.12 });
             } catch (_) { }
         }
-
         if (combatDist >= profile.jumpAttackMin && combatDist <= profile.jumpAttackMax && cdJumpAttack <= 0) {
             if (Math.random() < profile.jumpAttackChance) {
                 if (doJumpAttack(hunter, combatTarget, combatDist)) {
@@ -603,48 +512,38 @@ function tickChase(hunter, target, inventory) {
                 cdJumpAttack = profile.cdJumpAttack;
             }
         }
-
         if (combatDist > profile.sprintJumpMin && combatDist < profile.sprintJumpMax && cdSprintJump <= 0) {
             if (doSprintJump(hunter, combatTarget)) {
                 cdSprintJump = profile.cdSprintJump;
             }
         }
-
         if (combatDist <= profile.lavaPourRange && inventory) {
             const lavaEntry = tryPourLava(hunter, combatTarget, inventory);
             if (lavaEntry) {
                 tempWaterBlocks.push(lavaEntry);
             }
         }
-
         if (cdTaunt <= 0 && combatDist < 50) {
             sendTaunt(combatTarget);
             cdTaunt = combatDist < 15 ? profile.cdTauntClose : profile.cdTaunt;
         }
-
         if (blocksTraveled >= profile.prepTravelBlocks && dist > profile.prepEnterDist) {
             switchToPrep(hunter);
         }
-
     } catch (_) { }
 }
-
 function tickPrep(hunter, target, inventory) {
     try {
         const profile = getProfileScaled();
         prepTicks += TICK_RATE;
-
         const hPos = hunter.location;
         const tPos = target.location;
         const dist = Math.sqrt((tPos.x - hPos.x) ** 2 + (tPos.z - hPos.z) ** 2);
-
         if (dist < profile.prepExitDist) {
             switchToChase(hunter);
             return;
         }
-
         if (!inventory) return;
-
         if (cdMining <= 0 && !miningTarget) {
             const gatherTarget = findPrepGatherTarget(hunter, inventory, profile);
             if (gatherTarget) {
@@ -652,7 +551,6 @@ function tickPrep(hunter, target, inventory) {
                 cdMining = profile.cdMining;
             }
         }
-
         if (!miningTarget) {
             let crafted = inventory.attemptCraft();
             if (crafted) {
@@ -660,30 +558,24 @@ function tickPrep(hunter, target, inventory) {
                 inventory.equipBest(hunter);
             }
         }
-
         inventory.attemptSmelt(system.currentTick, smeltTimers);
-
         if (prepTicks === TICK_RATE * 3) {
             placeUtility(hunter, "minecraft:crafting_table");
         }
         if (prepTicks === TICK_RATE * 6) {
             placeUtility(hunter, "minecraft:furnace");
         }
-
         if (cdEat <= 0) {
             tryEat(hunter, inventory, profile.eatBelowHp);
             cdEat = profile.cdEat;
         }
-
         if (prepTicks >= profile.prepDuration || inventory.hasGoodGear()) {
             inventory.equipBest(hunter);
             blocksTraveled = 0;
             switchToChase(hunter);
         }
-
     } catch (_) { }
 }
-
 function switchToChase(hunter) {
     state = "chase";
     prepTicks = 0;
@@ -702,7 +594,6 @@ function switchToChase(hunter) {
         if (h) try { inv.equipBest(h); } catch (_) { }
     }
 }
-
 function enterBuildingMode(hunter) {
     if (isBuilding) return;
     isBuilding = true;
@@ -711,7 +602,6 @@ function enterBuildingMode(hunter) {
         try { h.triggerEvent("manhunt:enter_building"); } catch (_) { }
     }
 }
-
 function exitBuildingMode(hunter) {
     if (!isBuilding) return;
     isBuilding = false;
@@ -720,7 +610,6 @@ function exitBuildingMode(hunter) {
         try { h.triggerEvent("manhunt:enter_chase"); } catch (_) { }
     }
 }
-
 function switchToPrep(hunter) {
     state = "prep";
     prepTicks = 0;
@@ -729,38 +618,31 @@ function switchToPrep(hunter) {
     pillarState = null;
     try { hunter.triggerEvent("manhunt:enter_prep"); } catch (_) { }
 }
-
 function switchToRetreat(hunter) {
     state = "retreat";
     bridgeState = null;
     pillarState = null;
 }
-
 function sendTaunt(target) {
     try {
         if (!getEnableTaunts()) return;
         target.sendMessage(getRandomTaunt());
     } catch (_) { }
 }
-
 function handleNearbyBoats(hunter) {
     const boatHandling = getBoatHandling();
     if (boatHandling === "ignore") return;
-
     try {
         const dim = hunter.dimension;
         const pos = hunter.location;
-
         try {
             hunter.runCommand("ride @e[type=minecraft:boat,r=3] dismount");
         } catch (_) { }
-
         const boats = dim.getEntities({
             type: "minecraft:boat",
             location: pos,
             maxDistance: 10
         });
-
         for (const boat of boats) {
             try {
                 boat.kill();
@@ -772,7 +654,6 @@ function handleNearbyBoats(hunter) {
         }
     } catch (_) { }
 }
-
 function tickCooldowns() {
     if (cdCombo > 0) cdCombo--;
     if (cdJumpAttack > 0) cdJumpAttack--;
@@ -787,7 +668,6 @@ function tickCooldowns() {
     if (cdPlace > 0) cdPlace--;
     if (cdShield > 0) cdShield--;
 }
-
 function resetCooldowns() {
     cdCombo = 0; cdJumpAttack = 0; cdStrafe = 0; cdSprintJump = 0;
     cdAttackAnim = 0; cdCatchup = 0; cdEat = 0; cdTaunt = 0;
@@ -795,7 +675,6 @@ function resetCooldowns() {
     comboHits = 0; strafeDir = 1;
     stuckTicks = 0; fallTicks = 0;
     blocksTraveled = 0;
-
     if (shieldTimerId !== null) {
         try { system.clearRun(shieldTimerId); } catch (_) { }
         shieldTimerId = null;

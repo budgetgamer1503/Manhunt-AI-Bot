@@ -1,10 +1,9 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
  */
 
 export const DEFAULT_CREATOR_KIT_ID = "auto";
-
 export const CREATOR_KITS = [
     {
         id: "balanced_hunter",
@@ -139,11 +138,9 @@ export const CREATOR_KITS = [
         ]
     }
 ];
-
 export function getCreatorKitById(kitId) {
     return CREATOR_KITS.find((kit) => kit.id === kitId) ?? null;
 }
-
 export function getCreatorKitChoices() {
     return [
         {
@@ -158,40 +155,31 @@ export function getCreatorKitChoices() {
         }))
     ];
 }
-
 export function resolveCreatorKit(playerItems = {}, preferredKitId = DEFAULT_CREATOR_KIT_ID) {
     if (preferredKitId && preferredKitId !== DEFAULT_CREATOR_KIT_ID) {
         return getCreatorKitById(preferredKitId) ?? CREATOR_KITS[0];
     }
-
     let bestKit = null;
     let bestScore = -1;
-
     for (const kit of CREATOR_KITS) {
         if (!matchesActivation(playerItems, kit.activation)) continue;
-
         let score = 0;
         for (const typeId of kit.scoreItems ?? []) {
             score += Math.min(playerItems[typeId] ?? 0, 4);
         }
-
         if (score > bestScore) {
             bestScore = score;
             bestKit = kit;
         }
     }
-
     return bestKit ?? CREATOR_KITS[0];
 }
-
 function matchesActivation(playerItems, activation = {}) {
     const anyOf = activation.anyOf ?? [];
     const allOf = activation.allOf ?? [];
-
     if (allOf.length > 0 && !allOf.every((typeId) => (playerItems[typeId] ?? 0) > 0)) {
         return false;
     }
-
     if (anyOf.length === 0) return true;
     return anyOf.some((typeId) => (playerItems[typeId] ?? 0) > 0);
 }

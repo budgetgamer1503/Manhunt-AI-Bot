@@ -1,5 +1,5 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
  */
 
@@ -15,9 +15,7 @@ import { INVENTORY_MODES, describeInventoryMode, capturePlayerInventoryProfile }
 import { getCreatorKitChoices, DEFAULT_CREATOR_KIT_ID } from "./kits.js";
 import { WIN_CONDITIONS, getHuntState, getRemainingTimeMinutes, getRemainingLives, getRemainingKills } from "./win_conditions.js";
 import { getScalingDescription } from "./difficulty_scaling.js";
-
 const CONFIG_PROP = "manhunt:last_config";
-
 const SKIN_OPTIONS = [
     { id: 0, name: "Steve", description: "Classic Steve skin" },
     { id: 1, name: "Alex", description: "Classic Alex skin" },
@@ -28,22 +26,18 @@ const SKIN_OPTIONS = [
     { id: 6, name: "Dream", description: "Green hoodie and white mask" },
     { id: 7, name: "Technoblade", description: "Pink skin with crown" }
 ];
-
 const AI_LEVELS = [
     { id: "easy", name: "Easy", description: "Lower pressure, slower reactions, safer retreats" },
     { id: "normal", name: "Normal", description: "Current baseline behavior" },
     { id: "expert", name: "Expert", description: "Higher pressure, faster reactions, stronger combat" }
 ];
-
 const PREP_BEHAVIORS = [
     { id: "hybrid", name: "Hybrid", description: "Hunter can gather, craft, and upgrade gear during chase." },
     { id: "pure_chase", name: "Pure Chase", description: "Hunter never stops to gather — relentless pursuit." },
     { id: "aggressive", name: "Aggressive", description: "Shorter prep phases, faster gathering, more combat." }
 ];
-
 const playerConfigs = new Map();
 const lastUsedConfigs = new Map();
-
 function getDefaultConfig() {
     return {
         name: "Hunter",
@@ -63,7 +57,6 @@ function getDefaultConfig() {
         difficultyScaling: true
     };
 }
-
 function cloneConfig(config = {}) {
     const defaults = getDefaultConfig();
     return {
@@ -84,16 +77,13 @@ function cloneConfig(config = {}) {
         difficultyScaling: config.difficultyScaling !== undefined ? !!config.difficultyScaling : defaults.difficultyScaling
     };
 }
-
 function getConfig(playerId) {
     if (!playerConfigs.has(playerId)) {
-        // Try loading from persistent storage
-        const loaded = loadPersistentConfig(playerId);
+                const loaded = loadPersistentConfig(playerId);
         playerConfigs.set(playerId, loaded || getDefaultConfig());
     }
     return playerConfigs.get(playerId);
 }
-
 function loadPersistentConfig(playerId) {
     try {
         const raw = world.getDynamicProperty(`${CONFIG_PROP}_${playerId}`);
@@ -103,43 +93,35 @@ function loadPersistentConfig(playerId) {
     } catch (_) { }
     return null;
 }
-
 function savePersistentConfig(playerId, config) {
     try {
         world.setDynamicProperty(`${CONFIG_PROP}_${playerId}`, JSON.stringify(config));
     } catch (_) { }
 }
-
 export function rememberLastUsedConfig(playerId, config) {
     const cloned = cloneConfig(config);
     lastUsedConfigs.set(playerId, cloned);
     savePersistentConfig(playerId, cloned);
 }
-
 export function getLastUsedConfig(playerId) {
     const config = lastUsedConfigs.get(playerId);
     if (config) return cloneConfig(config);
     return loadPersistentConfig(playerId);
 }
-
 export function describeAILevel(levelId) {
     return AI_LEVELS.find((level) => level.id === levelId)?.name ?? "Normal";
 }
-
 export function describeWinCondition(conditionId) {
     return WIN_CONDITIONS.find((w) => w.id === conditionId)?.name ?? "Infinite";
 }
-
 export function describePrepBehavior(behaviorId) {
     return PREP_BEHAVIORS.find((b) => b.id === behaviorId)?.name ?? "Hybrid";
 }
-
 export function showSpawnMenu(player, handlers, hunterActive = false) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§l§4MANHUNT BOT v0.7.0")
         .body(buildSpawnMenuBody(config, hunterActive));
-
     const actions = [];
     addMenuButton(form, actions, "§l§cStart Hunt\n§r§7Use current config and begin countdown", () => {
         if (hunterActive) {
@@ -148,7 +130,6 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
         }
         showSpawnConfirmation(player, config, handlers, hunterActive, false);
     });
-
     addMenuButton(form, actions, "§l§6Quick Restart\n§r§7Reuse the last confirmed hunt config", () => {
         const lastConfig = getLastUsedConfig(player.id);
         if (!lastConfig) {
@@ -161,35 +142,27 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
         }
         showSpawnConfirmation(player, lastConfig, handlers, hunterActive, true);
     });
-
     addMenuButton(form, actions, "§l§bHunt Status\n§r§7View runtime state and respawn info", () => {
         showHuntStatus(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, "§lEdit Name\n§r§7Change hunter name", () => {
         showNameEditor(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, "§lSelect Skin\n§r§7Choose hunter appearance", () => {
         showSkinSelector(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, `§lAI Level: ${describeAILevel(config.aiLevel)}\n§r§7Set difficulty profile`, () => {
         showAILevelSelector(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, `§lInventory Mode: ${describeInventoryMode(config.inventoryMode)}\n§r§7Set item source for hunter`, () => {
         showInventoryModeSelector(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, `§lWin Condition: ${describeWinCondition(config.winCondition)}\n§r§7Set how the hunt ends`, () => {
         showWinConditionSelector(player, handlers, hunterActive);
     });
-
     addMenuButton(form, actions, `§lPrep Behavior: ${describePrepBehavior(config.prepBehavior)}\n§r§7Set gathering/preparation style`, () => {
         showPrepBehaviorSelector(player, handlers, hunterActive);
     });
-
     addMenuButton(
         form, actions,
         config.difficultyScaling
@@ -203,7 +176,6 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
             showSpawnMenu(player, handlers, hunterActive);
         }
     );
-
     addMenuButton(
         form, actions,
         config.enableTaunts
@@ -217,7 +189,6 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
             showSpawnMenu(player, handlers, hunterActive);
         }
     );
-
     addMenuButton(
         form, actions,
         config.boatHandling === "destroy"
@@ -233,7 +204,6 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
             showSpawnMenu(player, handlers, hunterActive);
         }
     );
-
     addMenuButton(
         form, actions,
         config.equipmentPersistence
@@ -249,7 +219,6 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
             showSpawnMenu(player, handlers, hunterActive);
         }
     );
-
     addMenuButton(
         form, actions,
         config.respawnDebug
@@ -265,27 +234,22 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
             showSpawnMenu(player, handlers, hunterActive);
         }
     );
-
     if (hunterActive) {
         addMenuButton(form, actions, "§l§4Despawn Hunter\n§r§7Remove the active hunter", () => {
             handlers.onDespawn?.(player);
         });
     }
-
     addMenuButton(form, actions, "§lClose\n§r§7Exit menu", () => { });
-
     form.show(player).then((response) => {
         if (response.canceled) return;
         const action = actions[response.selection];
         if (action) action();
     }).catch(() => { });
 }
-
 function buildSpawnMenuBody(config, hunterActive) {
     const runtimeState = hunterActive
         ? (isRespawning() ? "Respawning" : "Active")
         : (isActive() ? "Active" : "Idle");
-
     const huntState = getHuntState();
     let winInfo = "";
     if (huntState.active) {
@@ -297,7 +261,6 @@ function buildSpawnMenuBody(config, hunterActive) {
             winInfo = `\n§fKills Needed: §c${getRemainingKills()}`;
         }
     }
-
     return [
         "§7Configure the hunter and manage the current hunt.",
         "",
@@ -321,12 +284,10 @@ function buildSpawnMenuBody(config, hunterActive) {
         `§fState: ${hunterActive ? "§c" : "§7"}${runtimeState}${winInfo}`
     ].join("\n");
 }
-
 function addMenuButton(form, actions, label, action) {
     form.button(label);
     actions.push(action);
 }
-
 function showSpawnConfirmation(player, config, handlers, hunterActive, isQuickRestart) {
     const form = new ActionFormData()
         .title(isQuickRestart ? "§l§6QUICK RESTART" : "§l§4CONFIRM HUNT")
@@ -346,13 +307,11 @@ function showSpawnConfirmation(player, config, handlers, hunterActive, isQuickRe
         ].join("\n"))
         .button(isQuickRestart ? "§l§aRestart Hunt" : "§l§aStart Hunt")
         .button("§l§7Back");
-
     form.show(player).then((response) => {
         if (response.canceled || response.selection === 1) {
             showSpawnMenu(player, handlers, hunterActive);
             return;
         }
-
         const confirmedConfig = cloneConfig(config);
         rememberLastUsedConfig(player.id, confirmedConfig);
         if (isQuickRestart) {
@@ -364,15 +323,12 @@ function showSpawnConfirmation(player, config, handlers, hunterActive, isQuickRe
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showNameEditor(player, handlers, hunterActive) {
     const config = getConfig(player.id);
-
     system.run(() => {
         const form = new ModalFormData()
             .title("§lEDIT HUNTER NAME")
             .textField("Hunter name", "Hunter", { defaultValue: config.name });
-
         form.show(player).then((response) => {
             if (response.canceled || response.cancelationReason === "UserBusy") {
                 if (response.cancelationReason === "UserBusy") {
@@ -384,7 +340,6 @@ function showNameEditor(player, handlers, hunterActive) {
                 showSpawnMenu(player, handlers, hunterActive);
                 return;
             }
-
             const name = String(response.formValues?.[0] ?? "").trim();
             config.name = name.length > 0 ? name.substring(0, 24) : "Hunter";
             player.onScreenDisplay.setActionBar(`§aHunter name set to §e${config.name}`);
@@ -394,13 +349,11 @@ function showNameEditor(player, handlers, hunterActive) {
         });
     });
 }
-
 function showSkinSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§lSELECT SKIN")
         .body(`§7Current skin: §b${SKIN_OPTIONS[config.skinId]?.name ?? "Steve"}`);
-
     const actions = [];
     for (const skin of SKIN_OPTIONS) {
         const selected = skin.id === config.skinId ? " §a[Selected]" : "";
@@ -410,11 +363,9 @@ function showSkinSelector(player, handlers, hunterActive) {
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showSpawnMenu(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showSpawnMenu(player, handlers, hunterActive);
@@ -426,13 +377,11 @@ function showSkinSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showAILevelSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§lAI LEVEL")
         .body(`§7Current level: §6${describeAILevel(config.aiLevel)}`);
-
     const actions = [];
     for (const level of AI_LEVELS) {
         const selected = level.id === config.aiLevel ? " §a[Selected]" : "";
@@ -442,11 +391,9 @@ function showAILevelSelector(player, handlers, hunterActive) {
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showSpawnMenu(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showSpawnMenu(player, handlers, hunterActive);
@@ -458,13 +405,11 @@ function showAILevelSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showWinConditionSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§lWIN CONDITION")
         .body(`§7Current: §6${describeWinCondition(config.winCondition)}`);
-
     const actions = [];
     for (const condition of WIN_CONDITIONS) {
         const selected = condition.id === config.winCondition ? " §a[Selected]" : "";
@@ -474,11 +419,9 @@ function showWinConditionSelector(player, handlers, hunterActive) {
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showSpawnMenu(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showSpawnMenu(player, handlers, hunterActive);
@@ -490,13 +433,11 @@ function showWinConditionSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showPrepBehaviorSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§lPREP BEHAVIOR")
         .body(`§7Current: §6${describePrepBehavior(config.prepBehavior)}`);
-
     const actions = [];
     for (const behavior of PREP_BEHAVIORS) {
         const selected = behavior.id === config.prepBehavior ? " §a[Selected]" : "";
@@ -506,11 +447,9 @@ function showPrepBehaviorSelector(player, handlers, hunterActive) {
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showSpawnMenu(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showSpawnMenu(player, handlers, hunterActive);
@@ -522,19 +461,16 @@ function showPrepBehaviorSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showInventoryModeSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
         .title("§lINVENTORY MODE")
         .body(`§7Current mode: §6${describeInventoryMode(config.inventoryMode)}\n§7Kit: §6${config.creatorKitId || "Default"}`);
-
     const actions = [];
     for (const mode of INVENTORY_MODES) {
         const selected = mode.id === config.inventoryMode ? " §a[Selected]" : "";
         addMenuButton(form, actions, `§l${mode.name}${selected}\n§r§7${mode.description}`, () => {
             config.inventoryMode = mode.id;
-
             if (mode.id === "creator_kit") {
                 if (hunterActive) {
                     try {
@@ -554,7 +490,6 @@ function showInventoryModeSelector(player, handlers, hunterActive) {
                 showCreatorKitSelector(player, handlers, hunterActive);
                 return;
             }
-
             if (mode.id !== "creator_kit") {
                 config.creatorKitId = DEFAULT_CREATOR_KIT_ID;
             }
@@ -573,16 +508,13 @@ function showInventoryModeSelector(player, handlers, hunterActive) {
                     }
                 } catch (_) { }
             }
-
             player.onScreenDisplay.setActionBar(`§aInventory mode set to §6${mode.name}`);
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showSpawnMenu(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showSpawnMenu(player, handlers, hunterActive);
@@ -594,20 +526,17 @@ function showInventoryModeSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 function showCreatorKitSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const choices = getCreatorKitChoices();
     const form = new ActionFormData()
         .title("§lCREATOR KIT")
         .body(`§7Select a kit for creator_kit mode`);
-
     const actions = [];
     for (const kit of choices) {
         const selected = kit.id === config.creatorKitId ? " §a[Selected]" : "";
         addMenuButton(form, actions, `§l${kit.name}${selected}\n§r§7${kit.description}`, () => {
             config.creatorKitId = kit.id;
-
             if (hunterActive && config.inventoryMode === "creator_kit") {
                 try {
                     const hunter = getHunter();
@@ -623,16 +552,13 @@ function showCreatorKitSelector(player, handlers, hunterActive) {
                     }
                 } catch (_) { }
             }
-
             player.onScreenDisplay.setActionBar(`§aCreator kit set to §6${kit.name}`);
             showSpawnMenu(player, handlers, hunterActive);
         });
     }
-
     addMenuButton(form, actions, "§l§7Back", () => {
         showInventoryModeSelector(player, handlers, hunterActive);
     });
-
     form.show(player).then((response) => {
         if (response.canceled) {
             showInventoryModeSelector(player, handlers, hunterActive);
@@ -644,14 +570,12 @@ function showCreatorKitSelector(player, handlers, hunterActive) {
         showInventoryModeSelector(player, handlers, hunterActive);
     });
 }
-
 function showHuntStatus(player, handlers, hunterActive) {
     const hunter = getHunter();
     const target = getTarget();
     const bed = getBed();
     const respawnStatus = getLastRespawnStatus();
     const huntState = getHuntState();
-
     const lines = [
         `§fHunt State: ${isRespawning() ? "§eRespawning" : (hunterActive ? "§cActive" : "§7Idle")}`,
         `§fTarget Player: ${target ? `§e${target.name}` : "§7None"}`,
@@ -666,7 +590,6 @@ function showHuntStatus(player, handlers, hunterActive) {
         `§fLast Respawn: ${respawnStatus.success === true ? "§aSuccess" : respawnStatus.success === false ? "§cFailed" : "§7Pending"}`,
         `§fRespawn Stage: §7${respawnStatus.stage}`
     ];
-
     if (getRespawnDebug()) {
         lines.push(
             `§fRespawn Reason: §7${respawnStatus.reason ?? "None"}`,
@@ -674,19 +597,16 @@ function showHuntStatus(player, handlers, hunterActive) {
             `§fAttempts: §7${respawnStatus.attempts ?? 0}`
         );
     }
-
     const form = new ActionFormData()
         .title("§lHUNT STATUS")
         .body(lines.join("\n"))
         .button("§l§7Back");
-
     form.show(player).then(() => {
         showSpawnMenu(player, handlers, hunterActive);
     }).catch(() => {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
-
 export function clearPlayerConfig(playerId) {
     playerConfigs.delete(playerId);
     lastUsedConfigs.delete(playerId);

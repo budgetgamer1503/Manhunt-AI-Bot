@@ -1,5 +1,5 @@
 /*
- * © 2026 BUDGETGAMER1503. All Rights Reserved.
+ * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
  * Unauthorized reproduction or distribution is strictly prohibited.
  */
 
@@ -27,9 +27,7 @@ import {
 } from "./sounds.js";
 import { registerCommands } from "./commands.js";
 import { info, debug, error } from "./logger.js";
-
 const MODULE = "main";
-
 let spawnSequenceActive = false;
 let bedScanId = null;
 let bedScanCounter = 0;
@@ -38,37 +36,23 @@ let compassTrackingId = null;
 let footstepId = null;
 let proximityId = null;
 let timeLimitCheckId = null;
-
-// =============================================================================
-// Initialization
-// =============================================================================
-
 registerCommands();
 loadHuntState();
-
 system.runTimeout(() => {
     cleanupOrphans();
 }, 40);
-
 system.run(() => {
     info(MODULE, "Manhunt Bot v0.7.0 loaded.");
     world.sendMessage("§eManhunt Bot v0.7.0 §7loaded. Use the §eHunter Compass §7to begin.");
 });
-
-// =============================================================================
-// Compass Use Handler
-// =============================================================================
-
 world.afterEvents.itemUse.subscribe((event) => {
     const player = event.source;
     const item = event.itemStack;
     if (!item || item.typeId !== "manhunt:hunter_compass") return;
-
     if (spawnSequenceActive) {
         player.onScreenDisplay.setActionBar("§eSpawn sequence already in progress.");
         return;
     }
-
     system.run(() => {
         showSpawnMenu(player, {
             onSpawn: onSpawnConfirmed,
@@ -77,11 +61,6 @@ world.afterEvents.itemUse.subscribe((event) => {
         }, isActive());
     });
 });
-
-// =============================================================================
-// Spawn / Despawn Handlers
-// =============================================================================
-
 function onSpawnConfirmed(player, config) {
     if (isActive()) {
         player.onScreenDisplay.setActionBar("§cA hunter is already active.");
@@ -89,7 +68,6 @@ function onSpawnConfirmed(player, config) {
     }
     beginSpawnSequence(player, config);
 }
-
 function onQuickRestartRequested(player, config) {
     if (isActive()) {
         player.onScreenDisplay.setActionBar("§cA hunter is already active.");
@@ -97,7 +75,6 @@ function onQuickRestartRequested(player, config) {
     }
     beginSpawnSequence(player, config);
 }
-
 function onDespawnRequested(player) {
     if (!isActive() && !isRespawning()) return;
     if (isRespawning()) {
@@ -108,20 +85,16 @@ function onDespawnRequested(player) {
     stopAllSystems();
     player.sendMessage("§7The hunter has been despawned.");
 }
-
 function beginSpawnSequence(player, config) {
     if (spawnSequenceActive) return;
     spawnSequenceActive = true;
     rememberLastUsedConfig(player.id, config);
-
     try {
         const playerLoadout = capturePlayerInventoryProfile(player);
-
         try {
             const inventory = player.getComponent("minecraft:inventory");
             if (inventory?.container) inventory.container.clearAll();
         } catch (_) { }
-
         try {
             const equippable = player.getComponent("minecraft:equippable");
             if (equippable) {
@@ -130,18 +103,15 @@ function beginSpawnSequence(player, config) {
                 }
             }
         } catch (_) { }
-
         try {
             const regeneration = EffectTypes.get("regeneration");
             const saturation = EffectTypes.get("saturation");
             if (regeneration) player.addEffect(regeneration, 200, { amplifier: 4, showParticles: true });
             if (saturation) player.addEffect(saturation, 200, { amplifier: 4, showParticles: false });
         } catch (_) { }
-
         let countdown = 10;
         showCountdown(player, countdown);
         playCountdownSound(player);
-
         const countdownId = system.runInterval(() => {
             countdown--;
             if (countdown > 0) {
@@ -149,23 +119,17 @@ function beginSpawnSequence(player, config) {
                 playCountdownSound(player);
                 return;
             }
-
             if (countdown === 0) {
                 showHuntBegins(player, config.name);
                 playHuntStartSound(player);
-
                 const hunter = spawn(player, config, playerLoadout);
-
                 if (hunter) {
                     const hunterInventory = getInventory();
                     if (hunterInventory) {
                         try { hunterInventory.equipBest(hunter); } catch (_) { }
                     }
-
-                    // Start win conditions tracking
-                    startHunt(config);
+                                        startHunt(config);
                     startStats();
-
                     startAI();
                     startBedScanning();
                     startLoadoutSync();
@@ -173,7 +137,6 @@ function beginSpawnSequence(player, config) {
                     startFootstepSounds();
                     startProximitySounds();
                     startTimeLimitCheck();
-
                     player.sendMessage(`§c§l${config.name} §r§7has spawned and is hunting you.`);
                     player.sendMessage(`§7AI Level: §6${config.aiLevel}`);
                     player.sendMessage(`§7Inventory Mode: §b${describeInventoryMode(config.inventoryMode)}`);
@@ -182,7 +145,6 @@ function beginSpawnSequence(player, config) {
                 } else {
                     player.sendMessage("§cFailed to spawn hunter. Try again.");
                 }
-
                 system.clearRun(countdownId);
                 spawnSequenceActive = false;
             }
@@ -192,13 +154,11 @@ function beginSpawnSequence(player, config) {
         player.sendMessage("§cError during spawn sequence. Try again.");
     }
 }
-
 function showCountdown(player, secondsLeft) {
     try {
         let color = "§a";
         if (secondsLeft <= 3) color = "§c§l";
         else if (secondsLeft <= 6) color = "§e";
-
         player.onScreenDisplay.setTitle(`${color}${secondsLeft}`, {
             fadeInDuration: 0,
             fadeOutDuration: 5,
@@ -207,7 +167,6 @@ function showCountdown(player, secondsLeft) {
         });
     } catch (_) { }
 }
-
 function showHuntBegins(player, name) {
     try {
         player.onScreenDisplay.setTitle("§4§lTHE HUNT BEGINS", {
@@ -218,41 +177,26 @@ function showHuntBegins(player, name) {
         });
     } catch (_) { }
 }
-
-// =============================================================================
-// Position Caching
-// =============================================================================
-
 system.runInterval(() => {
     cachePosition();
 }, 5);
-
-// =============================================================================
-// Death Handlers
-// =============================================================================
-
 world.afterEvents.entityDie.subscribe((event) => {
     const entity = event.deadEntity;
     if (!entity) return;
-
     try {
         if (entity.typeId === "manhunt:hunter" && entity.hasTag("hunter_active")) {
             handleHunterDeath(entity);
             return;
         }
-
         if (entity.typeId === "minecraft:player") {
             handlePlayerDeath(entity);
         }
     } catch (_) { }
 });
-
 function handleHunterDeath(entity) {
     const death = resolveDeathPosition(entity);
     storeDeathLocation(death.pos, death.dimId);
-
     playDeathSound(entity.dimension, death.pos);
-
     const target = getTarget();
     const inventory = getInventory();
     if (inventory) {
@@ -268,16 +212,11 @@ function handleHunterDeath(entity) {
             clearSavedInventory();
         }
     }
-
     try {
         entity.runCommand("replaceitem entity @s slot.weapon.offhand 0 air 0");
     } catch (_) { }
-
-    // Record stats
-    statsRecordHunterDeath();
-
-    // Check win conditions
-    const result = recordHunterDeath();
+        statsRecordHunterDeath();
+        const result = recordHunterDeath();
     if (result.huntOver) {
         if (target) {
             try {
@@ -299,7 +238,6 @@ function handleHunterDeath(entity) {
         }, 10);
         return;
     }
-
     if (!canRespawn()) {
         if (target) {
             try {
@@ -321,7 +259,6 @@ function handleHunterDeath(entity) {
         }, 10);
         return;
     }
-
     if (target) {
         try {
             const deathNum = getDeathCount() + 1;
@@ -334,9 +271,7 @@ function handleHunterDeath(entity) {
             target.sendMessage("§eHunter killed. §7Respawn sequence started for 1 minute.");
         } catch (_) { }
     }
-
     stopAI();
-
     respawn((newHunter) => {
         if (newHunter && target) {
             try {
@@ -352,7 +287,6 @@ function handleHunterDeath(entity) {
             } catch (_) { }
             return;
         }
-
         if (target) {
             try {
                 target.onScreenDisplay.setTitle("§a§lHUNTER DEFEATED!", {
@@ -365,7 +299,6 @@ function handleHunterDeath(entity) {
                 playHuntEndSound(target, "runner");
             } catch (_) { }
         }
-
         endStats("runner", "Hunter failed to respawn");
         stopAI();
         stopAllSystems();
@@ -374,46 +307,33 @@ function handleHunterDeath(entity) {
         }, 10);
     });
 }
-
 function handlePlayerDeath(entity) {
     const target = getTarget();
     if (!target || target.id !== entity.id) return;
-
     statsRecordRunnerDeath();
-
     const result = recordRunnerDeath(entity.nameTag || "Player");
     if (result.huntOver) {
         endStats("hunter", result.reason);
     }
-
     system.runTimeout(() => {
         if (isRespawning()) {
             cancelRespawn("target player died during respawn");
         }
-
         despawn(false);
         stopAI();
         stopAllSystems();
-
         try {
             world.sendMessage(`§c${entity.nameTag || "Player"} §7was killed by the hunter. The manhunt is over.`);
         } catch (_) { }
     }, 20);
 }
-
-// =============================================================================
-// Damage Handlers
-// =============================================================================
-
 world.afterEvents.entityHurt.subscribe((event) => {
     const entity = event.hurtEntity;
     if (!entity) return;
-
     try {
         if (entity.typeId === "manhunt:hunter" && entity.hasTag("hunter_active")) {
             const damage = event.damage;
             recordDamageTaken(damage);
-
             const inventory = getInventory();
             if (inventory) {
                 const cause = event.damageSource?.cause ?? "none";
@@ -424,24 +344,20 @@ world.afterEvents.entityHurt.subscribe((event) => {
         }
     } catch (_) { }
 });
-
 world.afterEvents.entityHitEntity.subscribe((event) => {
     const attacker = event.damagingEntity;
     const target = event.hitEntity;
     if (!attacker || !target) return;
-
     try {
         if (attacker.typeId === "manhunt:hunter" && attacker.hasTag("hunter_active")) {
             triggerAttack(attacker);
             playAttackSound(attacker);
-
             const equippable = attacker.getComponent("minecraft:equippable");
             if (equippable) {
                 const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
                 if (mainhand && WEAPON_DAMAGE[mainhand.typeId]) {
                     const weaponDamage = WEAPON_DAMAGE[mainhand.typeId];
                     let extraDamage = weaponDamage - 3;
-
                     const { isCrit, multiplier } = rollCrit(attacker);
                     if (isCrit && extraDamage > 0) {
                         extraDamage = Math.ceil(extraDamage * multiplier);
@@ -454,7 +370,6 @@ world.afterEvents.entityHitEntity.subscribe((event) => {
                             });
                         } catch (_) { }
                     }
-
                     if (extraDamage > 0) {
                         try {
                             target.applyDamage(extraDamage, {
@@ -463,25 +378,17 @@ world.afterEvents.entityHitEntity.subscribe((event) => {
                             });
                         } catch (_) { }
                     }
-
                     recordDamageDealt(weaponDamage + extraDamage);
                 }
             }
         }
     } catch (_) { }
 });
-
-// =============================================================================
-// Bed Scanning
-// =============================================================================
-
 function startBedScanning() {
     if (bedScanId !== null) return;
-
     bedScanId = system.runInterval(() => {
         const hunter = getHunter();
         const target = getTarget();
-
         let scanPos = null;
         let scanDim = null;
         if (hunter) {
@@ -491,9 +398,7 @@ function startBedScanning() {
             scanPos = target.location;
             scanDim = target.dimension;
         }
-
         if (!scanPos || !scanDim) return;
-
         try {
             const dimId = scanDim.id.replace("minecraft:", "");
             for (let x = -3; x <= 3; x++) {
@@ -504,7 +409,6 @@ function startBedScanning() {
                             y: Math.floor(scanPos.y) + y,
                             z: Math.floor(scanPos.z) + z
                         };
-
                         try {
                             const block = scanDim.getBlock(blockPos);
                             if (block?.typeId?.includes("bed")) {
@@ -515,7 +419,6 @@ function startBedScanning() {
                     }
                 }
             }
-
             bedScanCounter++;
             if (bedScanCounter >= 5) {
                 bedScanCounter = 0;
@@ -524,34 +427,24 @@ function startBedScanning() {
         } catch (_) { }
     }, 200);
 }
-
 function stopBedScanning() {
     if (bedScanId === null) return;
     system.clearRun(bedScanId);
     bedScanId = null;
 }
-
-// =============================================================================
-// Compass Tracking
-// =============================================================================
-
 function startCompassTracking() {
     if (compassTrackingId !== null) return;
-
     compassTrackingId = system.runInterval(() => {
         const hunter = getHunter();
         const target = getTarget();
         if (!hunter || !target) return;
-
         try {
             const hPos = hunter.location;
             const tPos = target.location;
             const dx = hPos.x - tPos.x;
             const dz = hPos.z - tPos.z;
             const dist = Math.sqrt(dx * dx + dz * dz);
-
-            // Show distance on action bar when holding compass
-            const equippable = target.getComponent("minecraft:equippable");
+                        const equippable = target.getComponent("minecraft:equippable");
             if (equippable) {
                 const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
                 if (mainhand?.typeId === "manhunt:hunter_compass") {
@@ -563,40 +456,22 @@ function startCompassTracking() {
         } catch (_) { }
     }, 10);
 }
-
 function getDirectionArrow(from, to) {
     const dx = to.x - from.x;
     const dz = to.z - from.z;
     const angle = Math.atan2(dx, dz) * (180 / Math.PI);
-
-    if (angle >= -22.5 && angle < 22.5) return "↑";       // North
-    if (angle >= 22.5 && angle < 67.5) return "↗";        // Northeast
-    if (angle >= 67.5 && angle < 112.5) return "→";       // East
-    if (angle >= 112.5 && angle < 157.5) return "↘";      // Southeast
-    if (angle >= 157.5 || angle < -157.5) return "↓";     // South
-    if (angle >= -157.5 && angle < -112.5) return "↙";    // Southwest
-    if (angle >= -112.5 && angle < -67.5) return "←";     // West
-    if (angle >= -67.5 && angle < -22.5) return "↖";      // Northwest
-    return "●";
+    if (angle >= -22.5 && angle < 22.5) return "↑";           if (angle >= 22.5 && angle < 67.5) return "↗";            if (angle >= 67.5 && angle < 112.5) return "→";           if (angle >= 112.5 && angle < 157.5) return "↘";          if (angle >= 157.5 || angle < -157.5) return "↓";         if (angle >= -157.5 && angle < -112.5) return "↙";        if (angle >= -112.5 && angle < -67.5) return "←";         if (angle >= -67.5 && angle < -22.5) return "↖";          return "●";
 }
-
 function stopCompassTracking() {
     if (compassTrackingId === null) return;
     system.clearRun(compassTrackingId);
     compassTrackingId = null;
 }
-
-// =============================================================================
-// Footstep Sounds
-// =============================================================================
-
 function startFootstepSounds() {
     if (footstepId !== null) return;
-
     footstepId = system.runInterval(() => {
         const hunter = getHunter();
         if (!hunter) return;
-
         try {
             const vel = hunter.getVelocity();
             const speed = Math.sqrt(vel.x ** 2 + vel.z ** 2);
@@ -606,25 +481,17 @@ function startFootstepSounds() {
         } catch (_) { }
     }, 8);
 }
-
 function stopFootstepSounds() {
     if (footstepId === null) return;
     system.clearRun(footstepId);
     footstepId = null;
 }
-
-// =============================================================================
-// Proximity Heartbeat
-// =============================================================================
-
 function startProximitySounds() {
     if (proximityId !== null) return;
-
     proximityId = system.runInterval(() => {
         const hunter = getHunter();
         const target = getTarget();
         if (!hunter || !target) return;
-
         try {
             const hPos = hunter.location;
             const tPos = target.location;
@@ -633,20 +500,13 @@ function startProximitySounds() {
         } catch (_) { }
     }, 20);
 }
-
 function stopProximitySounds() {
     if (proximityId === null) return;
     system.clearRun(proximityId);
     proximityId = null;
 }
-
-// =============================================================================
-// Time Limit Check
-// =============================================================================
-
 function startTimeLimitCheck() {
     if (timeLimitCheckId !== null) return;
-
     timeLimitCheckId = system.runInterval(() => {
         const result = checkTimeLimit();
         if (result.huntOver) {
@@ -672,32 +532,21 @@ function startTimeLimitCheck() {
         }
     }, 40);
 }
-
 function stopTimeLimitCheck() {
     if (timeLimitCheckId === null) return;
     system.clearRun(timeLimitCheckId);
     timeLimitCheckId = null;
 }
-
-// =============================================================================
-// Loadout Sync (Player Share mode)
-// =============================================================================
-
 function startLoadoutSync() {
     if (loadoutSyncId !== null) return;
-
     loadoutSyncId = system.runInterval(() => {
         if (isRespawning()) return;
-
         const hunter = getHunter();
         const target = getTarget();
         const hunterInventory = getInventory();
         if (!hunter || !target || !hunterInventory) return;
-
         const currentConfig = getCurrentConfigSnapshot();
-
         if (currentConfig.inventoryMode !== "player_share") return;
-
         const playerLoadout = capturePlayerInventoryProfile(target);
         hunterInventory.refreshForConfig(currentConfig, playerLoadout, {
             replaceExisting: false,
@@ -706,17 +555,11 @@ function startLoadoutSync() {
         try { hunterInventory.equipBest(hunter); } catch (_) { }
     }, 40);
 }
-
 function stopLoadoutSync() {
     if (loadoutSyncId === null) return;
     system.clearRun(loadoutSyncId);
     loadoutSyncId = null;
 }
-
-// =============================================================================
-// Player Leave Handler
-// =============================================================================
-
 world.afterEvents.playerLeave.subscribe((event) => {
     const target = getTarget();
     if (target) {
@@ -739,32 +582,20 @@ world.afterEvents.playerLeave.subscribe((event) => {
             stopAllSystems();
         }
     }
-
     clearPlayerConfig(event.playerId ?? "");
 });
-
-// =============================================================================
-// Portal Following
-// =============================================================================
-
 world.afterEvents.playerDimensionChange.subscribe((event) => {
     const player = event.player;
     const target = getTarget();
     if (!target || player.id !== target.id) return;
-
     debug(MODULE, `Target changed dimension: ${event.fromDimension.id} -> ${event.toDimension.id}`);
-
-    // Schedule hunter to follow after a short delay
-    system.runTimeout(() => {
+        system.runTimeout(() => {
         const hunter = getHunter();
         if (!hunter || !isActive()) return;
-
         try {
             const toDimension = event.toDimension;
             const tPos = player.location;
-
-            // Find safe position near target in new dimension
-            let spawnY = tPos.y;
+                        let spawnY = tPos.y;
             for (let y = Math.floor(tPos.y) + 10; y >= Math.max(tPos.y - 20, -64); y--) {
                 const block = toDimension.getBlock({ x: Math.floor(tPos.x), y, z: Math.floor(tPos.z) });
                 if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
@@ -772,29 +603,20 @@ world.afterEvents.playerDimensionChange.subscribe((event) => {
                     break;
                 }
             }
-
             const angle = Math.random() * Math.PI * 2;
             const dist = 8 + Math.random() * 5;
             const newX = tPos.x + Math.cos(angle) * dist;
             const newZ = tPos.z + Math.sin(angle) * dist;
-
             hunter.teleport(
                 { x: newX, y: spawnY, z: newZ },
                 { dimension: toDimension }
             );
-
             debug(MODULE, `Hunter followed target to ${toDimension.id}`);
             target.sendMessage("§cThe hunter followed you through the portal!");
         } catch (e) {
             error(MODULE, "Failed to follow target through portal", e);
         }
-    }, 60); // 3 second delay
-});
-
-// =============================================================================
-// System Stop Helper
-// =============================================================================
-
+    }, 60); });
 function stopAllSystems() {
     stopBedScanning();
     stopLoadoutSync();
