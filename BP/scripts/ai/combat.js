@@ -3,8 +3,9 @@
  * Unauthorized reproduction or distribution is strictly prohibited.
  */
 
-import { system, BlockPermutation } from "@minecraft/server";
-import { getProfile } from "./profiles.js";
+import { system, BlockPermutation, world } from "@minecraft/server";
+import { getProfile, randomTaunt } from "./profiles.js";
+import { getEnableTaunts } from "../entity_manager.js";
 
 export class CombatSystem {
     constructor(brain) {
@@ -282,16 +283,13 @@ export class CombatSystem {
 
     _sendTaunt(target) {
         try {
-            const { getEnableTaunts } = require("../entity_manager.js");
             if (!getEnableTaunts()) return;
-            const { randomTaunt } = require("./profiles.js");
             target.sendMessage(randomTaunt());
         } catch (_) { }
     }
 
     _getCombatTarget(hunter, primary) {
         try {
-            const { world } = require("@minecraft/server");
             const players = world.getAllPlayers();
             const hPos = hunter.location;
             let closest = primary;
