@@ -25,7 +25,6 @@ import {
     playRespawnSound, playTauntSound, playHuntStartSound, playHuntEndSound,
     playCountdownSound, playBlockPlaceSound, playBlockBreakSound, playEatSound
 } from "./sounds.js";
-import { registerCommands } from "./commands.js";
 import { info, debug, error } from "./logger.js";
 const MODULE = "main";
 let spawnSequenceActive = false;
@@ -36,7 +35,6 @@ let compassTrackingId = null;
 let footstepId = null;
 let proximityId = null;
 let timeLimitCheckId = null;
-registerCommands();
 loadHuntState();
 system.runTimeout(() => {
     cleanupOrphans();
