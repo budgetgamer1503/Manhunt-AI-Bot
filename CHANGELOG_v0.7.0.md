@@ -23,4 +23,4 @@
 - Modular AI system (7 focused class files instead of 1 giant 1357-line file)
 - Fixed version mismatch, `require()` crashes, prepBehavior hardcoding
 
-**Requires Minecraft Bedrock 1.21.40+**
+**Requires Minecraft Bedrock 26.10+**
