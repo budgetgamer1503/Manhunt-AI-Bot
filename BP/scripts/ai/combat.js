@@ -7,6 +7,49 @@ import { system, BlockPermutation, world } from "@minecraft/server";
 import { getProfile, randomTaunt } from "./profiles.js";
 import { getEnableTaunts } from "../entity_manager.js";
 
+const CLOSE_RANGE = 4;
+const MID_RANGE = 12;
+const STRAFE_STEP_STRENGTH = 0.24;
+const STRAFE_STEP_COUNT_MIN = 5;
+const STRAFE_STEP_COUNT_MAX = 9;
+const STRAFE_STEP_INTERVAL = 3;
+const CIRCLE_STRAFE_STRENGTH = 0.18;
+const W_TAP_CHANCE = 0.3;
+const W_TAP_FORWARD_STRENGTH = 0.4;
+const W_TAP_COOLDOWN = 40;
+const SHIELD_KNOCKBACK_STRENGTH = 1.0;
+const SHIELD_VERTICAL = 0.2;
+const PARRY_KNOCKBACK_MULT = 1.8;
+const PARRY_VERTICAL_MULT = 1.5;
+
+const PRIORITY_FOOD = {
+    "minecraft:enchanted_golden_apple": { weight: 50, maxHp: 8, combatOnly: true, effects: "regeneration 2 36|absorption 3 120|fire_resistance 0 300|resistance 0 300" },
+    "minecraft:golden_apple":          { weight: 49, maxHp: 8, combatOnly: true, effects: "regeneration 2 8|absorption 0 120" },
+    "minecraft:golden_carrot":         { weight: 46, maxHp: 20, combatOnly: false, effects: "regeneration 2 10" },
+    "minecraft:cooked_beef":           { weight: 45, maxHp: 20, combatOnly: false, effects: "regeneration 2 8" },
+    "minecraft:cooked_porkchop":       { weight: 44, maxHp: 20, combatOnly: false, effects: "regeneration 2 8" },
+    "minecraft:cooked_mutton":         { weight: 38, maxHp: 20, combatOnly: false, effects: "regeneration 2 6" },
+    "minecraft:cooked_chicken":        { weight: 37, maxHp: 20, combatOnly: false, effects: "regeneration 2 6" },
+    "minecraft:cooked_salmon":         { weight: 36, maxHp: 20, combatOnly: false, effects: "regeneration 2 6" },
+    "minecraft:baked_potato":          { weight: 35, maxHp: 20, combatOnly: false, effects: "regeneration 2 5" },
+    "minecraft:bread":                 { weight: 34, maxHp: 20, combatOnly: false, effects: "regeneration 2 5" },
+    "minecraft:cooked_cod":            { weight: 33, maxHp: 20, combatOnly: false, effects: "regeneration 2 5" },
+    "minecraft:apple":                 { weight: 31, maxHp: 20, combatOnly: false, effects: "regeneration 2 4" },
+    "minecraft:golden_apple":          { weight: 49, maxHp: 8, combatOnly: true, effects: "regeneration 2 8|absorption 0 120" },
+    "minecraft:cooked_rabbit":         { weight: 32, maxHp: 20, combatOnly: false, effects: "regeneration 2 5" },
+    "minecraft:mushroom_stew":         { weight: 41, maxHp: 20, combatOnly: false, effects: "regeneration 2 7" },
+    "minecraft:beetroot_soup":         { weight: 42, maxHp: 20, combatOnly: false, effects: "regeneration 2 7" },
+    "minecraft:pumpkin_pie":           { weight: 43, maxHp: 20, combatOnly: false, effects: "regeneration 2 7" },
+    "minecraft:cookie":                { weight: 24, maxHp: 20, combatOnly: false, effects: "regeneration 2 2" },
+    "minecraft:melon_slice":           { weight: 25, maxHp: 20, combatOnly: false, effects: "regeneration 2 2" },
+    "minecraft:sweet_berries":         { weight: 29, maxHp: 20, combatOnly: false, effects: "regeneration 2 2" },
+    "minecraft:dried_kelp":            { weight: 23, maxHp: 20, combatOnly: false, effects: "regeneration 2 2" },
+    "minecraft:carrot":                { weight: 30, maxHp: 20, combatOnly: false, effects: "regeneration 2 3" },
+    "minecraft:beetroot":              { weight: 22, maxHp: 20, combatOnly: false, effects: "regeneration 2 2" },
+    "minecraft:honey_bottle":          { weight: 39, maxHp: 20, combatOnly: false, effects: "regeneration 2 6" },
+    "minecraft:chorus_fruit":          { weight: 48, maxHp: 8, combatOnly: true, effects: "regeneration 2 6" }
+};
+
 export class CombatSystem {
     constructor(brain) {
         this.brain = brain;
@@ -14,6 +57,7 @@ export class CombatSystem {
         this.strafeDir = 1;
         this.shieldTimerId = null;
         this.shieldActive = false;
+        this._strafeState = { isStrafing: false, lastWTapTick: 0 };
     }
 
     get hunter() { return this.brain.hunter; }
@@ -26,6 +70,7 @@ export class CombatSystem {
         this.comboHits = 0;
         this.strafeDir = 1;
         this.clearShield();
+        this._strafeState = { isStrafing: false, lastWTapTick: 0 };
     }
 
     tick() {
@@ -61,7 +106,7 @@ export class CombatSystem {
         }
 
         if (cd.isReady("strafe") && cDist <= p.strafeRange && cDist >= 1.5) {
-            this.strafeDir = this._doStrafe(h, combatTarget, cDist, this.strafeDir);
+            this._doDistanceStrafe(h, combatTarget, cDist);
             cd.set("strafe", p.cdStrafe);
         }
 
@@ -114,6 +159,7 @@ export class CombatSystem {
                     if (heal > 0) hp.setCurrentValue(hp.currentValue + heal);
                 }
             } catch (_) { }
+            this._applyShieldKnockback(hunter, attacker, false);
             return;
         }
 
@@ -147,39 +193,90 @@ export class CombatSystem {
         } catch (_) { }
     }
 
-    _doStrafe(hunter, target, dist, dir) {
+    _doDistanceStrafe(hunter, target, dist) {
+        if (this._strafeState.isStrafing || !hunter.isOnGround || hunter.isInWater || hunter.isFalling) return;
+
+        this._strafeState.isStrafing = true;
+
+        system.runTimeout(() => {
+            if (!hunter.isValid || !hunter.target || !hunter.isOnGround || hunter.isInWater || hunter.isFalling) {
+                this._strafeState.isStrafing = false;
+                return;
+            }
+
+            let direction;
+            let strength = STRAFE_STEP_STRENGTH;
+
+            if (dist < CLOSE_RANGE) {
+                const toTargetX = target.location.x - hunter.location.x;
+                const toTargetZ = target.location.z - hunter.location.z;
+                const d = Math.sqrt(toTargetX * toTargetX + toTargetZ * toTargetZ) || 1;
+                const side = Math.random() < 0.5 ? 1 : -1;
+                direction = { x: (-toTargetZ / d) * side, z: (toTargetX / d) * side };
+                strength = CIRCLE_STRAFE_STRENGTH;
+            } else if (dist < MID_RANGE) {
+                direction = { x: Math.random() * 2 - 1, z: Math.random() * 2 - 1 };
+            } else {
+                const toTargetX = target.location.x - hunter.location.x;
+                const toTargetZ = target.location.z - hunter.location.z;
+                const d = Math.sqrt(toTargetX * toTargetX + toTargetZ * toTargetZ) || 1;
+                direction = {
+                    x: (toTargetX / d) + (Math.random() * 0.6 - 0.3),
+                    z: (toTargetZ / d) + (Math.random() * 0.6 - 0.3)
+                };
+            }
+
+            const totalSteps = STRAFE_STEP_COUNT_MIN + ((Math.random() * (STRAFE_STEP_COUNT_MAX - STRAFE_STEP_COUNT_MIN + 1)) | 0);
+            this._performStrafeSteps(hunter, direction, strength, totalSteps);
+
+            const currentTick = system.currentTick;
+            if (dist < MID_RANGE && Math.random() < W_TAP_CHANCE && currentTick > (this._strafeState.lastWTapTick || 0) + W_TAP_COOLDOWN) {
+                system.runTimeout(() => {
+                    if (!hunter.isValid || !hunter.target || !hunter.isOnGround) return;
+                    const tgt = hunter.target;
+                    const fwdX = tgt.location.x - hunter.location.x;
+                    const fwdZ = tgt.location.z - hunter.location.z;
+                    const fwdDist = Math.sqrt(fwdX * fwdX + fwdZ * fwdZ) || 1;
+                    hunter.applyImpulse({
+                        x: (fwdX / fwdDist) * W_TAP_FORWARD_STRENGTH,
+                        y: 0,
+                        z: (fwdZ / fwdDist) * W_TAP_FORWARD_STRENGTH
+                    });
+                    this._strafeState.lastWTapTick = currentTick;
+                }, (totalSteps * STRAFE_STEP_INTERVAL) + 2);
+            }
+        }, 2);
+    }
+
+    _performStrafeSteps(hunter, direction, strength, stepsRemaining) {
+        if (stepsRemaining <= 0 || !hunter.isValid || !hunter.target || !hunter.isOnGround || hunter.isInWater || hunter.isFalling) {
+            this._strafeState.isStrafing = false;
+            return;
+        }
+
+        hunter.applyImpulse({ x: direction.x * strength, y: 0, z: direction.z * strength });
+
+        system.runTimeout(() => {
+            this._performStrafeSteps(hunter, direction, strength, stepsRemaining - 1);
+        }, STRAFE_STEP_INTERVAL);
+    }
+
+    _applyShieldKnockback(hunter, attacker, isParry) {
+        if (!attacker) return;
         try {
-            const vel = hunter.getVelocity();
-            if (Math.abs(vel.y) > 0.05) return dir;
+            const rot = hunter.getRotation();
+            const yawRad = (rot.y + 90) * (Math.PI / 180);
+            const dirX = Math.cos(yawRad);
+            const dirZ = Math.sin(yawRad);
+            const kb = isParry ? SHIELD_KNOCKBACK_STRENGTH * PARRY_KNOCKBACK_MULT : SHIELD_KNOCKBACK_STRENGTH;
+            const vert = isParry ? SHIELD_VERTICAL * PARRY_VERTICAL_MULT : SHIELD_VERTICAL;
 
-            const hPos = hunter.location;
-            const tPos = target.location;
-            const dx = tPos.x - hPos.x;
-            const dz = tPos.z - hPos.z;
+            attacker.applyImpulse({ x: -dirX * kb, y: vert, z: -dirZ * kb });
 
-            let d = dir;
-            if (Math.random() < 0.15) d *= -1;
-
-            const perpX = -dz / dist * d;
-            const perpZ = dx / dist * d;
-            const fwdX = (dx / dist) * 0.1;
-            const fwdZ = (dz / dist) * 0.1;
-
-            const dim = hunter.dimension;
-            const cx = Math.floor(hPos.x + perpX * 1.5);
-            const cz = Math.floor(hPos.z + perpZ * 1.5);
-            const cy = Math.floor(hPos.y) - 1;
-
-            const below = dim.getBlock({ x: cx, y: cy, z: cz });
-            const at = dim.getBlock({ x: cx, y: cy + 1, z: cz });
-
-            if (!below || below.typeId === "minecraft:air" || below.typeId === "minecraft:water" || below.typeId === "minecraft:lava") return d;
-            if (at && at.typeId !== "minecraft:air" && at.typeId !== "minecraft:tall_grass" && at.typeId !== "minecraft:short_grass") return d;
-
-            hunter.applyImpulse({ x: perpX * 0.12 + fwdX, y: 0, z: perpZ * 0.12 + fwdZ });
-            return d;
+            if (isParry) {
+                try { attacker.runCommand("effect @s slowness 1 2 true"); } catch (_) { }
+            }
         } catch (_) { }
-        return dir;
     }
 
     _doJumpAttack(hunter, target, dist) {
@@ -217,20 +314,44 @@ export class CombatSystem {
         try {
             const hp = hunter.getComponent("minecraft:health");
             if (!hp || hp.currentValue >= eatBelowHp) return false;
-            const food = inventory.getBestFood();
-            if (!food) return false;
-            inventory.showItemInHand(hunter, food, "eating", 32);
+
+            const isInCombat = hunter.target !== undefined;
+            let bestFood = null;
+            let highestWeight = -1;
+
+            for (const slot of inventory.slots) {
+                if (!slot || slot.amount <= 0) continue;
+                const cfg = PRIORITY_FOOD[slot.typeId];
+                if (!cfg) continue;
+                if (hp.currentValue > cfg.maxHp) continue;
+                if (cfg.combatOnly && !isInCombat) continue;
+                if (cfg.weight > highestWeight) {
+                    highestWeight = cfg.weight;
+                    bestFood = slot.typeId;
+                }
+            }
+
+            if (!bestFood) return false;
+
+            const foodCfg = PRIORITY_FOOD[bestFood];
+            inventory.showItemInHand(hunter, bestFood, "eating", 32);
+
             system.runTimeout(() => {
                 try {
-                    const hunger = inventory.getFoodHunger(food);
-                    inventory.removeItem(food, 1);
-                    const h = hunter.getComponent("minecraft:health");
-                    if (h) {
-                        const heal = Math.min(hunger, h.effectiveMax - h.currentValue);
-                        if (heal > 0) h.setCurrentValue(h.currentValue + heal);
+                    inventory.removeItem(bestFood, 1);
+                    if (foodCfg.effects) {
+                        for (const effStr of foodCfg.effects.split("|")) {
+                            const parts = effStr.trim().split(/\s+/);
+                            if (parts.length >= 3) {
+                                try {
+                                    hunter.runCommand(`effect @s ${parts[0]} ${parts[2]} ${parts[1]}`);
+                                } catch (_) { }
+                            }
+                        }
                     }
                 } catch (_) { }
             }, 32);
+
             return true;
         } catch (_) { }
         return false;

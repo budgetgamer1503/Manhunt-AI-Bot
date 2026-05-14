@@ -122,6 +122,7 @@ export class AIBrain {
 
         this._updateMovement();
         this.survival.updateFallTicks();
+        this.survival.checkAntiTrap();
         this.survival.cleanTempWater();
         this._handleNearbyBoats();
 

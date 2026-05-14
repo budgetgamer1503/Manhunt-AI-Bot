@@ -6,10 +6,16 @@
 import { BlockPermutation, system } from "@minecraft/server";
 import { getProfile } from "./profiles.js";
 
+const DANGER_BLOCKS = ["minecraft:lava", "minecraft:fire", "minecraft:soul_fire"];
+const FALLING_TAG = "falling";
+const WATER_SAVE_CHANCE = 0.15;
+const FALL_DISTANCE_THRESHOLD = 10;
+
 export class SurvivalSystem {
     constructor(brain) {
         this.brain = brain;
         this.fallTicks = 0;
+        this._fallStartY = null;
     }
 
     get hunter() { return this.brain.hunter; }
@@ -20,14 +26,44 @@ export class SurvivalSystem {
 
     reset() {
         this.fallTicks = 0;
+        this._fallStartY = null;
     }
 
     updateFallTicks() {
+        const h = this.hunter;
+        if (!h) return;
         try {
-            const vel = this.hunter.getVelocity();
+            const vel = h.getVelocity();
+            const isFalling = vel.y < -0.5;
+
             if (vel.y < -0.5) this.fallTicks++;
             else this.fallTicks = 0;
+
+            if (isFalling && !h.hasTag(FALLING_TAG)) {
+                h.addTag(FALLING_TAG);
+                this._fallStartY = h.location.y;
+            } else if (!isFalling && h.hasTag(FALLING_TAG)) {
+                h.removeTag(FALLING_TAG);
+                this._tryFallWaterSave(h);
+            }
         } catch (_) { }
+    }
+
+    _tryFallWaterSave(hunter) {
+        if (this._fallStartY === null) return;
+        const fallDistance = this._fallStartY - hunter.location.y;
+        this._fallStartY = null;
+
+        if (fallDistance > FALL_DISTANCE_THRESHOLD && Math.random() < WATER_SAVE_CHANCE) {
+            try {
+                const loc = hunter.location;
+                const x = Math.floor(loc.x), y = Math.floor(loc.y) - 1, z = Math.floor(loc.z);
+                hunter.dimension.runCommand(`setblock ${x} ${y} ${z} water`);
+                system.runTimeout(() => {
+                    try { hunter.dimension.runCommand(`setblock ${x} ${y} ${z} air`); } catch (_) { }
+                }, 20);
+            } catch (_) { }
+        }
     }
 
     checkSurvival() {
@@ -58,6 +94,42 @@ export class SurvivalSystem {
         }
 
         return null;
+    }
+
+    checkAntiTrap() {
+        const h = this.hunter;
+        if (!h) return;
+
+        try {
+            const loc = h.location;
+            const x = Math.floor(loc.x), y = Math.floor(loc.y), z = Math.floor(loc.z);
+            const dim = h.dimension;
+
+            const headBlock = dim.getBlock({ x, y: y + 1, z });
+            const feetBlock = dim.getBlock({ x, y, z });
+
+            const feetSolid = feetBlock && feetBlock.typeId !== "minecraft:air";
+            const headSolid = headBlock && headBlock.typeId !== "minecraft:air";
+
+            if (feetSolid && headSolid) {
+                dim.runCommand(`setblock ${x} ${y + 1} ${z} air destroy`);
+                dim.runCommand(`setblock ${x} ${y} ${z} air destroy`);
+                system.runTimeout(() => {
+                    if (h.isValid) {
+                        h.applyImpulse({ x: 0, y: 0.5, z: 0 });
+                    }
+                }, 5);
+                return;
+            }
+
+            const belowBlock = dim.getBlock({ x, y: y - 1, z });
+            if (belowBlock && DANGER_BLOCKS.includes(belowBlock.typeId)) {
+                dim.runCommand(`setblock ${x} ${y - 1} ${z} cobblestone`);
+                if (h.isValid) {
+                    h.applyImpulse({ x: (Math.random() - 0.5) * 0.8, y: 0.4, z: (Math.random() - 0.5) * 0.8 });
+                }
+            }
+        } catch (_) { }
     }
 
     tickRetreat() {
