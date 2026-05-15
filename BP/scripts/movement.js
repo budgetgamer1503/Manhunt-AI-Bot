@@ -482,3 +482,46 @@ function isReplaceable(typeId) {
     return typeId === "minecraft:air" || typeId === "minecraft:short_grass" ||
         typeId === "minecraft:tall_grass" || typeId === "minecraft:dead_bush";
 }
+
+export function checkWeatherShelter(hunter) {
+    try {
+        const dim = hunter.dimension;
+        if (dim.id !== "minecraft:overworld") return false;
+
+        const weather = dim.getWeather();
+        if (weather !== "rain" && weather !== "thunder") return false;
+        if (Math.random() > 0.4) return false;
+
+        const pos = hunter.location;
+        const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+
+        let hasCover = false;
+        for (let y = fy + 2; y <= fy + 6; y++) {
+            const b = dim.getBlock({ x: fx, y, z: fz });
+            if (b && b.typeId !== "minecraft:air" && b.typeId !== "minecraft:water") {
+                hasCover = true;
+                break;
+            }
+        }
+        if (hasCover) return false;
+
+        const offsets = [
+            { x: 3, z: 0 }, { x: -3, z: 0 }, { x: 0, z: 3 }, { x: 0, z: -3 },
+            { x: 5, z: 0 }, { x: -5, z: 0 }, { x: 0, z: 5 }, { x: 0, z: -5 }
+        ];
+
+        for (const off of offsets) {
+            const cx = fx + off.x, cz = fz + off.z;
+            for (let y = fy + 2; y <= fy + 6; y++) {
+                const b = dim.getBlock({ x: cx, y, z: cz });
+                if (b && b.typeId !== "minecraft:air" && b.typeId !== "minecraft:water") {
+                    const dx = off.x, dz = off.z;
+                    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+                    hunter.applyImpulse({ x: (dx / dist) * 0.15, y: 0, z: (dz / dist) * 0.15 });
+                    return true;
+                }
+            }
+        }
+    } catch (_) { }
+    return false;
+}

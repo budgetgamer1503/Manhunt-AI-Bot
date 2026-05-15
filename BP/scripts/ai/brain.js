@@ -12,7 +12,8 @@ import { BuildingSystem } from "./building.js";
 import { GatheringSystem } from "./gathering.js";
 import {
     checkLavaEscape, checkWaterMLG, checkBlockClutch, checkCaveEscape,
-    checkPillarUp, checkParkourJump, checkBridging, executeAction
+    checkPillarUp, checkParkourJump, checkBridging, executeAction,
+    checkWeatherShelter
 } from "../movement.js";
 
 const TICK_RATE = 2;
