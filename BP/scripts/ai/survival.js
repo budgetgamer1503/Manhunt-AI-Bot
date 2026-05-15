@@ -8,8 +8,8 @@ import { getProfile } from "./profiles.js";
 
 const DANGER_BLOCKS = ["minecraft:lava", "minecraft:fire", "minecraft:soul_fire"];
 const FALLING_TAG = "falling";
-const WATER_SAVE_CHANCE = 0.15;
-const FALL_DISTANCE_THRESHOLD = 10;
+const WATER_SAVE_CHANCE = 0.75;
+const FALL_DISTANCE_THRESHOLD = 7;
 
 export class SurvivalSystem {
     constructor(brain) {
@@ -57,10 +57,16 @@ export class SurvivalSystem {
         if (fallDistance > FALL_DISTANCE_THRESHOLD && Math.random() < WATER_SAVE_CHANCE) {
             try {
                 const loc = hunter.location;
-                const x = Math.floor(loc.x), y = Math.floor(loc.y) - 1, z = Math.floor(loc.z);
-                hunter.dimension.runCommand(`setblock ${x} ${y} ${z} water`);
+                const dim = hunter.dimension;
+                const fx = Math.floor(loc.x), fz = Math.floor(loc.z);
+
+                const groundY = this._findGroundBelow(dim, { x: fx, y: loc.y, z: fz }, 64);
+                if (groundY === null) return;
+
+                const waterY = groundY;
+                dim.runCommand(`setblock ${fx} ${waterY} ${fz} water`);
                 system.runTimeout(() => {
-                    try { hunter.dimension.runCommand(`setblock ${x} ${y} ${z} air`); } catch (_) { }
+                    try { dim.runCommand(`setblock ${fx} ${waterY} ${fz} air`); } catch (_) { }
                 }, 20);
             } catch (_) { }
         }

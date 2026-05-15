@@ -26,7 +26,7 @@ Experience the thrill of being hunted in your own Minecraft world! **Manhunt Bot
 ### 🛡️ Survival Intelligence
 - **Anti-trap system** — Detects encasement in solid blocks (obsidian, cobblestone, etc.) and breaks out; auto-places cobblestone when standing on lava, fire, or soul fire
 - **Water bucket MLG** — Places water precisely to break fatal falls
-- **Fall water save** — 15% chance to simulate MLG water bucket after falling 10+ blocks
+- **Fall water save** — 75% chance to place water at ground level after falling 7+ blocks
 - **Block clutching** — Places blocks below while falling to catch ledges
 - **Cave escape** — Detects being stuck underground and mines/pillars out
 - **Bridging + pillaring** — Builds across gaps and pillars up to reach elevated targets
