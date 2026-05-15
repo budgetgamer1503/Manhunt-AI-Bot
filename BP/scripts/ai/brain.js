@@ -126,6 +126,7 @@ export class AIBrain {
         this.survival.checkAntiTrap();
         this.survival.cleanTempWater();
         this._handleNearbyBoats();
+        checkWeatherShelter(h);
 
         if (this.building.bridgeState) {
             this.building.tickBridge();
