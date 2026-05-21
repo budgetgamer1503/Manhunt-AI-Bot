@@ -10,6 +10,7 @@ import { CombatSystem } from "./combat.js";
 import { SurvivalSystem } from "./survival.js";
 import { BuildingSystem } from "./building.js";
 import { GatheringSystem } from "./gathering.js";
+import { getClassProfile } from "./classes.js";
 import {
     checkLavaEscape, checkWaterMLG, checkBlockClutch, checkCaveEscape,
     checkPillarUp, checkParkourJump, checkBridging, executeAction,
@@ -31,6 +32,7 @@ export class AIBrain {
         this.target = null;
         this.inventory = null;
         this.aiLevel = "normal";
+        this.classId = "default";
         this.enableTaunts = true;
         this.boatHandling = "destroy";
 
@@ -45,15 +47,19 @@ export class AIBrain {
         this._intervalId = null;
     }
 
-    get profile() { return getProfile(this.aiLevel); }
+    get profile() {
+        const base = getProfile(this.aiLevel);
+        return getClassProfile(this.classId || "default", base);
+    }
 
-    start(hunter, target, inventory, aiLevel, enableTaunts, boatHandling) {
+    start(hunter, target, inventory, aiLevel, enableTaunts, boatHandling, classId, tickExternally = false) {
         if (this._intervalId !== null) return;
 
         this.hunter = hunter;
         this.target = target;
         this.inventory = inventory;
         this.aiLevel = aiLevel || "normal";
+        this.classId = classId || "default";
         this.enableTaunts = enableTaunts !== undefined ? enableTaunts : true;
         this.boatHandling = boatHandling || "destroy";
 
@@ -78,9 +84,11 @@ export class AIBrain {
         try { hunter.triggerEvent("manhunt:enter_chase"); } catch (_) { }
         if (inventory) try { inventory.equipBest(hunter); } catch (_) { }
 
-        this._intervalId = system.runInterval(() => {
-            try { this._tick(); } catch (_) { }
-        }, TICK_RATE);
+        if (!tickExternally) {
+            this._intervalId = system.runInterval(() => {
+                try { this._tick(); } catch (_) { }
+            }, TICK_RATE);
+        }
     }
 
     stop() {

@@ -1,0 +1,59 @@
+{
+  "squad_form": {
+    "title": "§l§4MANHUNT SQUAD LOBBY",
+    "max_squad_size": 4,
+    "presets": [
+      {
+        "id": "classic_solo",
+        "name": "§fClassic Solo\n§71 Standard Hunter",
+        "classes": ["default"]
+      },
+      {
+        "id": "classic_duo",
+        "name": "§aDouble Trouble\n§72 Melee Knight Hunters",
+        "classes": ["knight", "knight"]
+      },
+      {
+        "id": "ranged_duo",
+        "name": "§eRanged Firepower\n§71 Knight + 1 Archer Hunter",
+        "classes": ["knight", "archer"]
+      },
+      {
+        "id": "tactical_trio",
+        "name": "§cTactical Trio\n§71 Knight + 1 Archer + 1 Saboteur",
+        "classes": ["knight", "archer", "saboteur"]
+      },
+      {
+        "id": "full_squad",
+        "name": "§4Apex Predators\n§72 Knights + 1 Archer + 1 Saboteur",
+        "classes": ["knight", "knight", "archer", "saboteur"]
+      }
+    ]
+  },
+  "classes": {
+    "default": {
+      "id": "default",
+      "name": "Default Hunter",
+      "description": "Standard balanced hunter profile utilizing default combat and gathering behavior.",
+      "kit": "balanced_hunter"
+    },
+    "knight": {
+      "id": "knight",
+      "name": "Knight (Melee Tank)",
+      "description": "Uses heavy armor and a shield. Relies on circle-strafing, block counters, and high-knockback parries.",
+      "kit": "knight_starter"
+    },
+    "archer": {
+      "id": "archer",
+      "name": "Archer (Ranged Support)",
+      "description": "High-mobility ranged fighter. Maintains distance (8-15m) and shoots predictive arrow/crossbow shots.",
+      "kit": "archer_starter"
+    },
+    "saboteur": {
+      "id": "saboteur",
+      "name": "Saboteur (Tactician)",
+      "description": "Utility planner. Throws slowness and harming potions, places cobwebs, and lights fires using flint & steel.",
+      "kit": "saboteur_starter"
+    }
+  }
+}

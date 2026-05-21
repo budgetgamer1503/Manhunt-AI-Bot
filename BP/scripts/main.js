@@ -9,7 +9,7 @@ import {
 } from "./ui.js";
 import { WEAPON_DAMAGE, capturePlayerInventoryProfile, describeInventoryMode } from "./inventory.js";
 import {
-    getHunter, getTarget, getInventory, isActive, isRespawning,
+    getHunter, getHunters, getTarget, getInventory, getInventoryForHunter, isActive, isRespawning,
     spawn, despawn, respawn, canRespawn, getDeathCount,
     setTarget, setBed, storeDeathLocation, resolveDeathPosition,
     cachePosition, cleanupOrphans, cancelRespawn,
@@ -17,9 +17,10 @@ import {
     attemptBedPlacementNearPortal, getCurrentConfigSnapshot,
     getTargets, addTarget, removeTarget, clearTargets
 } from "./entity_manager.js";
-import { startAI, stopAI, forceChaseMode, triggerAttack, rollCrit, handleDamage } from "./state_machine.js";
+import { startAI, stopAI, stopHunterAI, forceChaseMode, triggerAttack, rollCrit, handleDamage } from "./state_machine.js";
 import { startHunt, endHunt, recordHunterDeath, recordRunnerDeath, checkTimeLimit, loadHuntState, isHuntActive } from "./win_conditions.js";
 import { startStats, endStats, recordDamageDealt, recordDamageTaken, recordHunterDeath as statsRecordHunterDeath, recordRunnerDeath as statsRecordRunnerDeath } from "./stats.js";
+import { resetHuntProgress, recordHunterDamageTaken, checkEndOfHuntAchievements } from "./achievements.js";
 import { info, debug, error } from "./logger.js";
 
 const MODULE = "main";
@@ -37,8 +38,8 @@ system.runTimeout(() => {
 }, 40);
 
 system.run(() => {
-    info(MODULE, "Manhunt Bot v0.7.0 loaded.");
-    world.sendMessage("§eManhunt Bot v0.7.0 §7loaded. Use the §eHunter Compass §7to begin.");
+    info(MODULE, "Manhunt Bot v0.8.0 loaded.");
+    world.sendMessage("§eManhunt Bot v0.8.0 §7loaded. Use the §eHunter Compass §7to begin.");
 });
 
 world.afterEvents.itemUse.subscribe((event) => {
@@ -137,6 +138,7 @@ function beginSpawnSequence(player, config) {
                     }
 
                     startHunt(config);
+                    resetHuntProgress();
                     startStats();
                     startAI();
                     startBedScanning();
@@ -214,10 +216,10 @@ function handleHunterDeath(entity) {
     storeDeathLocation(death.pos, death.dimId);
 
     const target = getTarget();
-    const inventory = getInventory();
+    const inventory = getInventoryForHunter(entity);
     if (inventory) {
         if (getEquipmentPersistence()) {
-            saveInventoryForRespawn(inventory);
+            saveInventoryForRespawn(entity, inventory);
         } else {
             try {
                 const dim = world.getDimension(death.dimId);
@@ -225,7 +227,6 @@ function handleHunterDeath(entity) {
             } catch (_) {
                 try { inventory.dropAll(entity.dimension, death.pos); } catch (_) { }
             }
-            clearSavedInventory();
         }
     }
 
@@ -246,6 +247,10 @@ function handleHunterDeath(entity) {
                     subtitle: "§7You survived the manhunt."
                 });
                 target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
+
+                const currentConfig = getCurrentConfigSnapshot();
+                const squadSize = getHunters().length;
+                checkEndOfHuntAchievements(target, "runner", squadSize, currentConfig.aiLevel);
             } catch (_) { }
         }
         endStats("runner", result.reason);
@@ -267,6 +272,10 @@ function handleHunterDeath(entity) {
                     subtitle: "§7You survived the manhunt."
                 });
                 target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
+
+                const currentConfig = getCurrentConfigSnapshot();
+                const squadSize = getHunters().length;
+                checkEndOfHuntAchievements(target, "runner", squadSize, currentConfig.aiLevel);
             } catch (_) { }
         }
         endStats("runner", "Hunter could not respawn");
@@ -278,30 +287,29 @@ function handleHunterDeath(entity) {
         return;
     }
 
+    const hData = getHunters().find(h => h.entity.id === entity.id);
+    const hName = hData ? hData.name : "Hunter";
+    const deathNum = hData ? hData.deathCount + 1 : getDeathCount() + 1;
+
     if (target) {
         try {
-            const deathNum = getDeathCount() + 1;
             target.onScreenDisplay.setTitle("§e§lHUNTER KILLED!", {
                 fadeInDuration: 5,
                 fadeOutDuration: 20,
                 stayDuration: 60,
-                subtitle: `§7Respawning in 1 minute... §8(Death #${deathNum})`
+                subtitle: `§7Respawning... §8(${hName} Death #${deathNum})`
             });
-            target.sendMessage("§eHunter killed. §7Respawn sequence started for 1 minute.");
+            target.sendMessage(`§e${hName} killed. §7Respawn sequence started.`);
         } catch (_) { }
     }
 
-    stopAI();
+    stopHunterAI(entity);
 
-    respawn((newHunter) => {
+    respawn(entity, (newHunter) => {
         if (newHunter && target) {
             try {
                 setTarget(target);
                 startAI();
-                startBedScanning();
-                startLoadoutSync();
-                startCompassTracking();
-                startTimeLimitCheck();
             } catch (_) { }
             return;
         }
@@ -312,18 +320,21 @@ function handleHunterDeath(entity) {
                     fadeInDuration: 5,
                     fadeOutDuration: 20,
                     stayDuration: 60,
-                    subtitle: "§7The hunter failed to respawn."
+                    subtitle: `§7${hName} failed to respawn.`
                 });
-                target.sendMessage("§aThe hunter has been permanently defeated.");
+                target.sendMessage(`§a${hName} has been permanently defeated.`);
             } catch (_) { }
         }
 
-        endStats("runner", "Hunter failed to respawn");
-        stopAI();
-        stopAllSystems();
-        system.runTimeout(() => {
-            try { despawn(false); } catch (_) { }
-        }, 10);
+        const aliveHunters = getHunters().filter(h => h.entity && h.entity.isValid());
+        if (aliveHunters.length === 0) {
+            endStats("runner", "All hunters failed to respawn");
+            stopAI();
+            stopAllSystems();
+            system.runTimeout(() => {
+                try { despawn(false); } catch (_) { }
+            }, 10);
+        }
     });
 }
 
@@ -349,6 +360,10 @@ function handlePlayerDeath(entity) {
 
         try {
             world.sendMessage(`§c${entity.nameTag || "Player"} §7was killed by the hunter. The manhunt is over.`);
+            
+            const currentConfig = getCurrentConfigSnapshot();
+            const squadSize = getHunters().length;
+            checkEndOfHuntAchievements(entity, "hunter", squadSize, currentConfig.aiLevel);
         } catch (_) { }
     }, 20);
 }
@@ -362,13 +377,20 @@ world.afterEvents.entityHurt.subscribe((event) => {
             const damage = event.damage;
             recordDamageTaken(damage);
 
-            const inventory = getInventory();
+            const inventory = getInventoryForHunter(entity);
             if (inventory) {
                 const cause = event.damageSource?.cause ?? "none";
                 const attacker = event.damageSource?.damagingEntity ?? undefined;
                 handleDamage(entity, inventory, cause, attacker);
             }
             forceChaseMode();
+        }
+
+        if (entity.typeId === "minecraft:player") {
+            const attacker = event.damageSource?.damagingEntity;
+            if (attacker && attacker.typeId === "manhunt:hunter" && attacker.hasTag("hunter_active")) {
+                recordHunterDamageTaken();
+            }
         }
     } catch (_) { }
 });
@@ -478,24 +500,44 @@ function startCompassTracking() {
     if (compassTrackingId !== null) return;
 
     compassTrackingId = system.runInterval(() => {
-        const hunter = getHunter();
+        const hunters = getHunters();
         const target = getTarget();
-        if (!hunter || !target) return;
+        if (hunters.length === 0 || !target) return;
 
         try {
-            const hPos = hunter.location;
-            const tPos = target.location;
-            const dx = hPos.x - tPos.x;
-            const dz = hPos.z - tPos.z;
-            const dist = Math.sqrt(dx * dx + dz * dz);
-
             const equippable = target.getComponent("minecraft:equippable");
             if (equippable) {
                 const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
                 if (mainhand?.typeId === "manhunt:hunter_compass") {
-                    const color = dist < 30 ? "§c" : dist < 80 ? "§e" : "§a";
-                    const arrow = getDirectionArrow(tPos, hPos);
-                    target.onScreenDisplay.setActionBar(`${color}${arrow} Hunter: ${Math.floor(dist)}m away`);
+                    const tPos = target.location;
+                    const trackingStrings = [];
+
+                    hunters.forEach((h, i) => {
+                        if (!h.entity) return;
+                        try {
+                            const hPos = h.entity.location;
+                            const dx = hPos.x - tPos.x;
+                            const dz = hPos.z - tPos.z;
+                            const dist = Math.sqrt(dx * dx + dz * dz);
+                            const arrow = getDirectionArrow(tPos, hPos);
+                            
+                            const classColors = {
+                                "default": "§a",
+                                "knight": "§6",
+                                "archer": "§b",
+                                "saboteur": "§d"
+                            };
+                            const classColor = classColors[h.classId] ?? "§7";
+                            const distColor = dist < 30 ? "§c" : dist < 80 ? "§e" : "§a";
+                            
+                            const shortClass = h.classId ? h.classId[0].toUpperCase() : "H";
+                            trackingStrings.push(`${classColor}${shortClass}-${h.name}: ${distColor}${Math.floor(dist)}m ${arrow}`);
+                        } catch (_) {}
+                    });
+
+                    if (trackingStrings.length > 0) {
+                        target.onScreenDisplay.setActionBar(trackingStrings.join(" §7| "));
+                    }
                 }
             }
         } catch (_) { }
@@ -564,21 +606,32 @@ function startLoadoutSync() {
     loadoutSyncId = system.runInterval(() => {
         if (isRespawning()) return;
 
-        const hunter = getHunter();
+        const hunters = getHunters();
         const target = getTarget();
-        const hunterInventory = getInventory();
-        if (!hunter || !target || !hunterInventory) return;
+        if (hunters.length === 0 || !target) return;
 
         const currentConfig = getCurrentConfigSnapshot();
-
         if (currentConfig.inventoryMode !== "player_share") return;
 
         const playerLoadout = capturePlayerInventoryProfile(target);
-        hunterInventory.refreshForConfig(currentConfig, playerLoadout, {
-            replaceExisting: false,
-            preserveUpgrades: true
-        });
-        try { hunterInventory.equipBest(hunter); } catch (_) { }
+
+        for (const h of hunters) {
+            if (!h.entity || !h.inventory) continue;
+            
+            const config = {
+                name: h.name,
+                skinId: h.skinId,
+                classId: h.classId,
+                aiLevel: h.aiLevel,
+                inventoryMode: currentConfig.inventoryMode,
+                creatorKitId: currentConfig.creatorKitId
+            };
+            h.inventory.refreshForConfig(config, playerLoadout, {
+                replaceExisting: false,
+                preserveUpgrades: true
+            });
+            try { h.inventory.equipBest(h.entity); } catch (_) { }
+        }
     }, 40);
 }
 

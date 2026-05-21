@@ -58,19 +58,23 @@ export class CombatSystem {
         this.shieldTimerId = null;
         this.shieldActive = false;
         this._strafeState = { isStrafing: false, lastWTapTick: 0 };
+        this.pullbackTicks = 0;
+        this.isPullingBow = false;
     }
 
     get hunter() { return this.brain.hunter; }
     get target() { return this.brain.target; }
     get inventory() { return this.brain.inventory; }
     get cooldowns() { return this.brain.cooldowns; }
-    get profile() { return getProfile(this.brain.aiLevel); }
+    get profile() { return this.brain.profile; } // Queries brain.profile which merges class adjustments
 
     reset() {
         this.comboHits = 0;
         this.strafeDir = 1;
         this.clearShield();
         this._strafeState = { isStrafing: false, lastWTapTick: 0 };
+        this.pullbackTicks = 0;
+        this.isPullingBow = false;
     }
 
     tick() {
@@ -79,10 +83,16 @@ export class CombatSystem {
         const inv = this.inventory;
         const cd = this.cooldowns;
         const p = this.profile;
+        const classId = this.brain.classId || "default";
 
         if (!h || !t || !inv) return;
 
-        if (!inv.isTempEquipActive()) {
+        // Dynamic Shield threat rotation
+        if (this.shieldActive) {
+            this._faceThreat(h, t);
+        }
+
+        if (!inv.isTempEquipActive() && !this.isPullingBow) {
             inv.equipWeapon(h);
         }
 
@@ -92,6 +102,19 @@ export class CombatSystem {
         const cdz = cPos.z - h.location.z;
         const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
 
+        // Class-specific combat overrides
+        if (classId === "archer" && cDist >= 5.0 && cDist <= 18.0) {
+            this._tickArcherArchery(h, combatTarget, inv, cd, p, cDist);
+            return;
+        }
+
+        // Reset bow pulling if the player gets too close
+        if (this.isPullingBow) {
+            this.isPullingBow = false;
+            this.pullbackTicks = 0;
+            inv.equipWeapon(h);
+        }
+
         if (cd.isReady("eat")) {
             if (this._tryEat(h, inv, p.eatBelowHp)) {
                 cd.set("eat", p.cdEat * 2);
@@ -100,8 +123,10 @@ export class CombatSystem {
             }
         }
 
+        // Knight blocking chance and cooldown adjustments
         if (cd.isReady("shield") && cDist < p.attackRange + 1 && inv.hasShield() && !this.shieldActive) {
-            this._equipShield(h, 20);
+            const shieldDuration = classId === "knight" ? 30 : 20;
+            this._equipShield(h, shieldDuration);
             cd.set("shield", p.cdShield);
         }
 
@@ -137,6 +162,11 @@ export class CombatSystem {
             }
         }
 
+        // Saboteur tactical deployables
+        if (classId === "saboteur" && cd.isReady("place")) {
+            this._tickSaboteurTactics(h, combatTarget, inv, cd, cDist);
+        }
+
         if (cDist <= p.lavaPourRange && inv.hasItem("minecraft:lava_bucket")) {
             this._tryPourLava(h, combatTarget, inv);
         }
@@ -145,6 +175,148 @@ export class CombatSystem {
             this._sendTaunt(combatTarget);
             cd.set("taunt", cDist < 15 ? p.cdTauntClose : p.cdTaunt);
         }
+    }
+
+    _tickArcherArchery(hunter, target, inventory, cooldowns, profile, distance) {
+        if (!inventory.hasItem("minecraft:bow") && !inventory.hasItem("minecraft:crossbow")) {
+            this.isPullingBow = false;
+            this.pullbackTicks = 0;
+            inventory.equipWeapon(hunter);
+            return;
+        }
+
+        const bowType = inventory.hasItem("minecraft:bow") ? "minecraft:bow" : "minecraft:crossbow";
+        this.isPullingBow = true;
+        this.pullbackTicks += 2;
+
+        // Slowly back away to maintain archery spacing (keep distance 8-15 blocks)
+        try {
+            const hPos = hunter.location;
+            const tPos = target.location;
+            const dx = hPos.x - tPos.x;
+            const dz = hPos.z - tPos.z;
+            const d = Math.sqrt(dx * dx + dz * dz) || 1;
+            // Backpedal vector
+            hunter.applyImpulse({ x: (dx / d) * 0.12, y: 0, z: (dz / d) * 0.12 });
+            hunter.lookAt(target.location);
+        } catch (_) { }
+
+        inventory.showItemInHand(hunter, bowType, "pulling", 10);
+
+        const pullbackThreshold = bowType === "minecraft:crossbow" ? 24 : 16;
+        if (this.pullbackTicks >= pullbackThreshold) {
+            this._firePredictiveArrow(hunter, target, distance);
+            this.pullbackTicks = 0;
+            this.isPullingBow = false;
+        }
+    }
+
+    _firePredictiveArrow(hunter, target, distance) {
+        try {
+            const dim = hunter.dimension;
+            const hPos = hunter.location;
+            const tPos = target.location;
+
+            // Gather velocities for predictive shooting
+            let tVel = { x: 0, y: 0, z: 0 };
+            try { tVel = target.getVelocity(); } catch (_) { }
+
+            // Travel speed of arrow (approx 2 blocks per tick)
+            const arrowSpeed = 1.8;
+            const travelTicks = distance / arrowSpeed;
+
+            // Predicted intercept coordinate
+            const predPos = {
+                x: tPos.x + tVel.x * travelTicks,
+                y: tPos.y + tVel.y * travelTicks + 0.5,
+                z: tPos.z + tVel.z * travelTicks
+            };
+
+            const spawnPos = { x: hPos.x, y: hPos.y + 1.6, z: hPos.z };
+            hunter.lookAt(predPos);
+
+            const arrow = dim.spawnEntity("minecraft:arrow", spawnPos);
+            
+            const dx = predPos.x - spawnPos.x;
+            const dy = predPos.y - spawnPos.y;
+            const dz = predPos.z - spawnPos.z;
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+
+            // Apply direction vector with gravity correction
+            const arrowImpulse = 1.8;
+            arrow.clearVelocity();
+            arrow.applyImpulse({
+                x: (dx / d) * arrowImpulse,
+                y: (dy / d) * arrowImpulse + 0.18, // Slight upward arc
+                z: (dz / d) * arrowImpulse
+            });
+
+            // Play fire sounds and particles
+            dim.playSound("random.bow", spawnPos, { volume: 0.8, pitch: 1.0 });
+            dim.spawnParticle("minecraft:crit_smoke_particle", spawnPos);
+
+        } catch (_) { }
+    }
+
+    _tickSaboteurTactics(hunter, target, inventory, cooldowns, distance) {
+        const dim = hunter.dimension;
+        const tPos = target.location;
+
+        // Flint & Steel / Fire placing in runner path
+        if (inventory.hasItem("minecraft:flint_and_steel") && distance <= 5.0) {
+            try {
+                let tVel = { x: 0, y: 0, z: 0 };
+                try { tVel = target.getVelocity(); } catch (_) { }
+                
+                // Project 2 blocks ahead of player heading
+                const firePos = {
+                    x: Math.floor(tPos.x + tVel.x * 4),
+                    y: Math.floor(tPos.y),
+                    z: Math.floor(tPos.z + tVel.z * 4)
+                };
+                
+                const block = dim.getBlock(firePos);
+                if (block?.typeId === "minecraft:air") {
+                    inventory.showItemInHand(hunter, "minecraft:flint_and_steel", "placing", 10);
+                    block.setPermutation(BlockPermutation.resolve("minecraft:fire"));
+                    inventory.removeItem("minecraft:flint_and_steel", 1);
+                    dim.playSound("fire.ignite", firePos);
+                    cooldowns.set("place", 30);
+                    return;
+                }
+            } catch (_) { }
+        }
+
+        // Cobwebs in runner path
+        if (inventory.hasItem("minecraft:web") && distance <= 6.0) {
+            try {
+                let tVel = { x: 0, y: 0, z: 0 };
+                try { tVel = target.getVelocity(); } catch (_) { }
+
+                const webPos = {
+                    x: Math.floor(tPos.x + tVel.x * 3),
+                    y: Math.floor(tPos.y),
+                    z: Math.floor(tPos.z + tVel.z * 3)
+                };
+
+                const block = dim.getBlock(webPos);
+                if (block?.typeId === "minecraft:air") {
+                    inventory.showItemInHand(hunter, "minecraft:web", "placing", 10);
+                    block.setPermutation(BlockPermutation.resolve("minecraft:web"));
+                    inventory.removeItem("minecraft:web", 1);
+                    dim.playSound("dig.stone", webPos, { volume: 0.5 });
+                    cooldowns.set("place", 40);
+                    return;
+                }
+            } catch (_) { }
+        }
+    }
+
+    _faceThreat(hunter, attacker) {
+        if (!attacker) return;
+        try {
+            hunter.lookAt(attacker.location);
+        } catch (_) { }
     }
 
     handleDamage(hunter, cause, attacker) {
@@ -160,6 +332,7 @@ export class CombatSystem {
                 }
             } catch (_) { }
             this._applyShieldKnockback(hunter, attacker, false);
+            this._faceThreat(hunter, attacker);
             return;
         }
 
@@ -170,6 +343,7 @@ export class CombatSystem {
 
         if ((cause === "projectile" || cause === "entityAttack") && inv.hasShield()) {
             this._equipShield(hunter, 40);
+            this._faceThreat(hunter, attacker);
         }
     }
 

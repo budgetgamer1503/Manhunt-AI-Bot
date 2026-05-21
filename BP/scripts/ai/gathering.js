@@ -18,7 +18,7 @@ export class GatheringSystem {
     get target() { return this.brain.target; }
     get inventory() { return this.brain.inventory; }
     get cooldowns() { return this.brain.cooldowns; }
-    get profile() { return getProfile(this.brain.aiLevel); }
+    get profile() { return this.brain.profile; }
 
     reset() {
         this.miningTarget = null;
@@ -28,6 +28,20 @@ export class GatheringSystem {
 
     tickMining() {
         if (!this.miningTarget) return;
+
+        // Sensory Mining Feedback: particle & sound
+        try {
+            const h = this.hunter;
+            if (h) {
+                const dim = h.dimension;
+                const pos = this.miningTarget.pos;
+                const blockType = this.miningTarget.typeId;
+                dim.spawnParticle("minecraft:block_destroy", pos, { block: blockType });
+                const hitSound = blockType.includes("log") ? "hit.wood" : "hit.stone";
+                dim.playSound(hitSound, pos, { volume: 0.3, pitch: 1.0 });
+            }
+        } catch (_) {}
+
         this.miningTarget.ticksLeft -= 2;
         if (this.miningTarget.ticksLeft <= 0) {
             this._finishMining();
@@ -71,8 +85,28 @@ export class GatheringSystem {
 
         inv.attemptSmelt(system.currentTick, this.smeltTimers);
 
-        if (this.prepTicks === 6) this._placeUtility(h, "minecraft:crafting_table");
-        if (this.prepTicks === 12) this._placeUtility(h, "minecraft:furnace");
+        // Smart Resource Auditing
+        if (cd.isReady("place_crafting") && !inv.hasItem("minecraft:crafting_table")) {
+            const hasLogs = inv.hasItem("minecraft:oak_log") || inv.hasItem("minecraft:birch_log") || inv.hasItem("minecraft:spruce_log");
+            if (hasLogs && !this._isUtilityPlacedNearby(h, "minecraft:crafting_table")) {
+                if (this._placeUtility(h, "minecraft:crafting_table")) {
+                    cd.set("place_crafting", 200);
+                }
+            }
+        }
+
+        if (cd.isReady("place_furnace") && !inv.hasItem("minecraft:furnace")) {
+            const hasRawIron = inv.hasItem("minecraft:raw_iron");
+            const hasCobble = inv.countItem("minecraft:cobblestone") >= 8;
+            const hasFuel = inv.hasItem("minecraft:coal") || inv.hasItem("minecraft:oak_log") || inv.hasItem("minecraft:oak_planks");
+            
+            if (hasRawIron && hasCobble && hasFuel && !this._isUtilityPlacedNearby(h, "minecraft:furnace")) {
+                const furnacePos = this._placeUtilityWithDigIn(h, "minecraft:furnace", inv);
+                if (furnacePos) {
+                    cd.set("place_furnace", 300);
+                }
+            }
+        }
 
         if (cd.isReady("eat")) {
             this._tryEatPrep(h, inv, p.eatBelowHp);
@@ -109,9 +143,13 @@ export class GatheringSystem {
             const typeId = block.typeId;
             const duration = inventory.getMiningDuration(typeId);
             if (duration <= 0) return;
-            const tool = inventory.getMiningTool(typeId);
-            if (tool) inventory.showItemInHand(hunter, tool, "mining", duration + 5);
-            else try { hunter.triggerEvent("manhunt:set_action_mining"); } catch (_) { }
+            const tool = inventory.getBestPickaxe(); // Use best pickaxe helper
+            if (tool && typeId.includes("ore")) inventory.showItemInHand(hunter, tool, "mining", duration + 5);
+            else {
+                const axe = inventory.getBestAxe();
+                if (axe && typeId.includes("log")) inventory.showItemInHand(hunter, axe, "mining", duration + 5);
+                else try { hunter.triggerEvent("manhunt:set_action_mining"); } catch (_) { }
+            }
             this.miningTarget = { pos: { x: blockPos.x, y: blockPos.y, z: blockPos.z }, typeId, ticksLeft: duration };
         } catch (_) { }
     }
@@ -128,6 +166,10 @@ export class GatheringSystem {
                 block.setPermutation(BlockPermutation.resolve("minecraft:air"));
                 const drop = inv.getMiningDrop(mt.typeId);
                 if (drop) inv.addItem(drop.typeId, drop.amount);
+                
+                // Breaking sound sensory feedback
+                const breakSound = mt.typeId.includes("log") ? "break.wood" : "break.stone";
+                dim.playSound(breakSound, mt.pos);
             }
         } catch (_) { }
         try { h.triggerEvent("manhunt:set_action_none"); } catch (_) { }
@@ -201,8 +243,85 @@ export class GatheringSystem {
             for (const off of offsets) {
                 const p = { x: Math.floor(pos.x) + off.x, y: Math.floor(pos.y), z: Math.floor(pos.z) + off.z };
                 const b = dim.getBlock(p);
-                if (b?.typeId === "minecraft:air") { b.setPermutation(BlockPermutation.resolve(blockType)); return; }
+                if (b?.typeId === "minecraft:air") {
+                    b.setPermutation(BlockPermutation.resolve(blockType));
+                    return p;
+                }
             }
         } catch (_) { }
+        return null;
+    }
+
+    _isUtilityPlacedNearby(hunter, typeId) {
+        try {
+            const dim = hunter.dimension;
+            const pos = hunter.location;
+            const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+            for (let x = -5; x <= 5; x++) {
+                for (let y = -2; y <= 2; y++) {
+                    for (let z = -5; z <= 5; z++) {
+                        const block = dim.getBlock({ x: fx + x, y: fy + y, z: fz + z });
+                        if (block?.typeId === typeId) return true;
+                    }
+                }
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    _placeUtilityWithDigIn(hunter, blockType, inventory) {
+        try {
+            const dim = hunter.dimension;
+            const pos = hunter.location;
+            const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+            const offsets = [{ x: 1, y: 0, z: 0 }, { x: -1, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }, { x: 0, y: 0, z: -1 }];
+            
+            for (const off of offsets) {
+                const p = { x: fx + off.x, y: fy, z: fz + off.z };
+                const b = dim.getBlock(p);
+                if (b?.typeId === "minecraft:air") {
+                    b.setPermutation(BlockPermutation.resolve(blockType));
+                    
+                    // Cover Smelting / Dig-In Check
+                    const runner = this.target;
+                    let runnerDist = 999;
+                    if (runner) {
+                        try {
+                            const rPos = runner.location;
+                            runnerDist = Math.sqrt((rPos.x - pos.x) ** 2 + (rPos.z - pos.z) ** 2);
+                        } catch (_) {}
+                    }
+                    
+                    if (runnerDist <= 30) {
+                        const shieldBlock = inventory.hasItem("minecraft:cobblestone") ? "minecraft:cobblestone" : (inventory.hasItem("minecraft:dirt") ? "minecraft:dirt" : null);
+                        if (shieldBlock) {
+                            let placed = 0;
+                            const coverOffsets = [
+                                { x: off.x + 1, z: off.z },
+                                { x: off.x - 1, z: off.z },
+                                { x: off.x, z: off.z + 1 },
+                                { x: off.x, z: off.z - 1 }
+                            ];
+                            for (const cOff of coverOffsets) {
+                                if (placed >= 3) break;
+                                const cp = { x: fx + cOff.x, y: fy, z: fz + cOff.z };
+                                const cb = dim.getBlock(cp);
+                                if (cb?.typeId === "minecraft:air") {
+                                    cb.setPermutation(BlockPermutation.resolve(shieldBlock));
+                                    inventory.removeItem(shieldBlock, 1);
+                                    this.brain.tempWaterBlocks.push({
+                                        pos: cp,
+                                        removeTick: system.currentTick + 600
+                                    });
+                                    placed++;
+                                }
+                            }
+                        }
+                    }
+                    return p;
+                }
+            }
+        } catch (_) {}
+        return null;
     }
 }

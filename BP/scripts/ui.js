@@ -7,7 +7,7 @@ import { system, world } from "@minecraft/server";
 import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
 import {
     getAILevel, getBed, getDeathCount, getEquipmentPersistence,
-    getHunter, getLastRespawnStatus, getRespawnDebug, getTarget,
+    getHunter, getHunters, getLastRespawnStatus, getRespawnDebug, getTarget,
     isActive, isRespawning, getInventory
 } from "./entity_manager.js";
 import { getAIState } from "./state_machine.js";
@@ -15,6 +15,8 @@ import { INVENTORY_MODES, describeInventoryMode, capturePlayerInventoryProfile }
 import { getCreatorKitChoices, DEFAULT_CREATOR_KIT_ID } from "./kits.js";
 import { WIN_CONDITIONS, getHuntState, getRemainingTimeMinutes, getRemainingLives, getRemainingKills } from "./win_conditions.js";
 import { getScalingDescription } from "./difficulty_scaling.js";
+import serverForm from "../../RP/ui/server_form.json";
+import { ACHIEVEMENTS, getUnlockedAchievements } from "./achievements.js";
 const CONFIG_PROP = "manhunt:last_config";
 const SKIN_OPTIONS = [
     { id: 0, name: "Steve", description: "Classic Steve skin" },
@@ -54,7 +56,21 @@ function getDefaultConfig() {
         maxLives: 3,
         timeLimitMinutes: 30,
         killTarget: 3,
-        difficultyScaling: true
+        difficultyScaling: true,
+        squadSize: 1,
+        squad: [
+            {
+                name: "Hunter 1",
+                skinId: 0,
+                classId: "default",
+                aiLevel: "normal",
+                enableTaunts: true,
+                boatHandling: "destroy",
+                inventoryMode: "starter",
+                creatorKitId: DEFAULT_CREATOR_KIT_ID,
+                prepBehavior: "hybrid"
+            }
+        ]
     };
 }
 function cloneConfig(config = {}) {
@@ -74,7 +90,19 @@ function cloneConfig(config = {}) {
         maxLives: Number.isInteger(config.maxLives) && config.maxLives > 0 ? config.maxLives : defaults.maxLives,
         timeLimitMinutes: Number.isInteger(config.timeLimitMinutes) && config.timeLimitMinutes > 0 ? config.timeLimitMinutes : defaults.timeLimitMinutes,
         killTarget: Number.isInteger(config.killTarget) && config.killTarget > 0 ? config.killTarget : defaults.killTarget,
-        difficultyScaling: config.difficultyScaling !== undefined ? !!config.difficultyScaling : defaults.difficultyScaling
+        difficultyScaling: config.difficultyScaling !== undefined ? !!config.difficultyScaling : defaults.difficultyScaling,
+        squadSize: Number.isInteger(config.squadSize) && config.squadSize > 0 ? config.squadSize : defaults.squadSize,
+        squad: Array.isArray(config.squad) ? config.squad.map(h => ({
+            name: h.name || "Hunter",
+            skinId: Number.isInteger(h.skinId) ? h.skinId : 0,
+            classId: h.classId || "default",
+            aiLevel: h.aiLevel || "normal",
+            enableTaunts: h.enableTaunts !== undefined ? !!h.enableTaunts : true,
+            boatHandling: h.boatHandling === "ignore" ? "ignore" : "destroy",
+            inventoryMode: h.inventoryMode || "starter",
+            creatorKitId: h.creatorKitId || DEFAULT_CREATOR_KIT_ID,
+            prepBehavior: h.prepBehavior || "hybrid"
+        })) : JSON.parse(JSON.stringify(defaults.squad))
     };
 }
 function getConfig(playerId) {
@@ -120,7 +148,7 @@ export function describePrepBehavior(behaviorId) {
 export function showSpawnMenu(player, handlers, hunterActive = false) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
-        .title("§l§4MANHUNT BOT v0.7.0")
+        .title("§l§4MANHUNT BOT v0.8.0")
         .body(buildSpawnMenuBody(config, hunterActive));
     const actions = [];
     addMenuButton(form, actions, "§l§cStart Hunt\n§r§7Use current config and begin countdown", () => {
@@ -142,17 +170,14 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
         }
         showSpawnConfirmation(player, lastConfig, handlers, hunterActive, true);
     });
-    addMenuButton(form, actions, "§l§bHunt Status\n§r§7View runtime state and respawn info", () => {
+    addMenuButton(form, actions, "§l§dManage Hunt Squad\n§r§7Configure multi-hunter squad settings", () => {
+        showSquadLobby(player, handlers, hunterActive);
+    });
+    addMenuButton(form, actions, "§l§e🏆 Achievements Checklist\n§r§7Check unlocked manhunt challenges", () => {
+        showAchievementsChecklist(player, handlers, hunterActive);
+    });
+    addMenuButton(form, actions, "§l§bHunt Status\n§r§7View squad runtime state and coordinates", () => {
         showHuntStatus(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, "§lEdit Name\n§r§7Change hunter name", () => {
-        showNameEditor(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, "§lSelect Skin\n§r§7Choose hunter appearance", () => {
-        showSkinSelector(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, `§lAI Level: ${describeAILevel(config.aiLevel)}\n§r§7Set difficulty profile`, () => {
-        showAILevelSelector(player, handlers, hunterActive);
     });
     addMenuButton(form, actions, `§lInventory Mode: ${describeInventoryMode(config.inventoryMode)}\n§r§7Set item source for hunter`, () => {
         showInventoryModeSelector(player, handlers, hunterActive);
@@ -160,14 +185,11 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
     addMenuButton(form, actions, `§lWin Condition: ${describeWinCondition(config.winCondition)}\n§r§7Set how the hunt ends`, () => {
         showWinConditionSelector(player, handlers, hunterActive);
     });
-    addMenuButton(form, actions, `§lPrep Behavior: ${describePrepBehavior(config.prepBehavior)}\n§r§7Set gathering/preparation style`, () => {
-        showPrepBehaviorSelector(player, handlers, hunterActive);
-    });
     addMenuButton(
         form, actions,
         config.difficultyScaling
-            ? "§lDifficulty Scaling: Enabled\n§r§7Hunter gets harder over time"
-            : "§lDifficulty Scaling: Disabled\n§r§7Hunter stays at base difficulty",
+            ? "§lDifficulty Scaling: Enabled\n§r§7Hunters get harder over time"
+            : "§lDifficulty Scaling: Disabled\n§r§7Hunters stay at base difficulty",
         () => {
             config.difficultyScaling = !config.difficultyScaling;
             player.onScreenDisplay.setActionBar(
@@ -178,37 +200,9 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
     );
     addMenuButton(
         form, actions,
-        config.enableTaunts
-            ? "§lTaunts: Enabled\n§r§7Hunter sends hunt taunts"
-            : "§lTaunts: Disabled\n§r§7Hunter stays silent",
-        () => {
-            config.enableTaunts = !config.enableTaunts;
-            player.onScreenDisplay.setActionBar(
-                config.enableTaunts ? "§aHunter taunts enabled." : "§cHunter taunts disabled."
-            );
-            showSpawnMenu(player, handlers, hunterActive);
-        }
-    );
-    addMenuButton(
-        form, actions,
-        config.boatHandling === "destroy"
-            ? "§lBoat Handling: Destroy\n§r§7Hunter breaks nearby boats"
-            : "§lBoat Handling: Ignore\n§r§7Hunter ignores boats",
-        () => {
-            config.boatHandling = config.boatHandling === "destroy" ? "ignore" : "destroy";
-            player.onScreenDisplay.setActionBar(
-                config.boatHandling === "destroy"
-                    ? "§eHunter will destroy nearby boats."
-                    : "§7Hunter will ignore boats."
-            );
-            showSpawnMenu(player, handlers, hunterActive);
-        }
-    );
-    addMenuButton(
-        form, actions,
         config.equipmentPersistence
-            ? "§lEquipment: Keep On Death\n§r§7Hunter keeps gear after death"
-            : "§lEquipment: Drop On Death\n§r§7Hunter drops gear after death",
+            ? "§lEquipment: Keep On Death\n§r§7Hunters keep gear after death"
+            : "§lEquipment: Drop On Death\n§r§7Hunters drop gear after death",
         () => {
             config.equipmentPersistence = !config.equipmentPersistence;
             player.onScreenDisplay.setActionBar(
@@ -235,7 +229,7 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
         }
     );
     if (hunterActive) {
-        addMenuButton(form, actions, "§l§4Despawn Hunter\n§r§7Remove the active hunter", () => {
+        addMenuButton(form, actions, "§l§4Despawn Squad\n§r§7Remove all active hunters", () => {
             handlers.onDespawn?.(player);
         });
     }
@@ -261,24 +255,26 @@ function buildSpawnMenuBody(config, hunterActive) {
             winInfo = `\n§fKills Needed: §c${getRemainingKills()}`;
         }
     }
+    
+    const squadSize = config.squadSize || 1;
+    const squad = config.squad || [];
+    const compList = squad.slice(0, squadSize).map((h, i) => {
+        const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
+        const className = classMeta.name.split(" ")[0];
+        return `  §7${i+1}. §e${h.name} §7(§b${className}§7)`;
+    }).join("\n");
+
     return [
-        "§7Configure the hunter and manage the current hunt.",
+        "§7Configure the hunter squad and manage the current hunt.",
         "",
-        "§l§fHunter Configuration",
-        `§fIdentity: §e${config.name}`,
-        `§fAppearance: §b${SKIN_OPTIONS[config.skinId]?.name ?? "Steve"}`,
-        `§fAI Level: §6${describeAILevel(config.aiLevel)}`,
+        "§l§fSquad Configuration",
+        `§fSquad Size: §d${squadSize}`,
+        `§fComposition:`,
+        compList,
+        "",
         `§fWin Condition: §6${describeWinCondition(config.winCondition)}`,
-        `§fPrep Behavior: §6${describePrepBehavior(config.prepBehavior)}`,
-        "",
-        "§l§fBehavior",
-        `§fScaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
-        `§fTaunts: ${config.enableTaunts ? "§aEnabled" : "§cDisabled"}`,
-        `§fBoat Handling: ${config.boatHandling === "destroy" ? "§cDestroy" : "§7Ignore"}`,
-        `§fEquipment: ${config.equipmentPersistence ? "§aKeep On Death" : "§cDrop On Death"}`,
-        "",
-        "§l§fDebug",
-        `§fRespawn Debug: ${config.respawnDebug ? "§aEnabled" : "§7Disabled"}`,
+        `§fDifficulty Scaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
+        `§fEquipment Persistence: ${config.equipmentPersistence ? "§aKeep" : "§cDrop"}`,
         "",
         "§l§fHunt Status",
         `§fState: ${hunterActive ? "§c" : "§7"}${runtimeState}${winInfo}`
@@ -289,23 +285,32 @@ function addMenuButton(form, actions, label, action) {
     actions.push(action);
 }
 function showSpawnConfirmation(player, config, handlers, hunterActive, isQuickRestart) {
+    const squadSize = config.squadSize || 1;
+    const squad = config.squad || [];
+    
+    const compText = squad.slice(0, squadSize).map((h, i) => {
+        const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
+        const className = classMeta.name.split(" ")[0];
+        return `  §e- ${h.name} §7(§b${className}§7)`;
+    }).join("\n");
+    
     const form = new ActionFormData()
-        .title(isQuickRestart ? "§l§6QUICK RESTART" : "§l§4CONFIRM HUNT")
+        .title(isQuickRestart ? "§l§6QUICK RESTART" : "§l§4CONFIRM SQUAD HUNT")
         .body([
             "§7Final check before hunt begins.",
             "",
-            `§fHunter: §e${config.name}`,
-            `§fSkin: §b${SKIN_OPTIONS[config.skinId]?.name ?? "Steve"}`,
-            `§fAI Level: §6${describeAILevel(config.aiLevel)}`,
+            `§fSquad Size: §d${squadSize}`,
+            "§fSquad Members:",
+            compText,
+            "",
             `§fWin Condition: §6${describeWinCondition(config.winCondition)}`,
-            `§fPrep: §6${describePrepBehavior(config.prepBehavior)}`,
-            `§fScaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
+            `§fDifficulty Scaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
             `§fEquipment: ${config.equipmentPersistence ? "§aKeep On Death" : "§cDrop On Death"}`,
             "",
             "§cNote: Starter inventory mode will clear your inventory.",
             "§710‑second countdown starts immediately."
         ].join("\n"))
-        .button(isQuickRestart ? "§l§aRestart Hunt" : "§l§aStart Hunt")
+        .button(isQuickRestart ? "§l§aRestart Squad Hunt" : "§l§aStart Squad Hunt")
         .button("§l§7Back");
     form.show(player).then((response) => {
         if (response.canceled || response.selection === 1) {
@@ -571,32 +576,59 @@ function showCreatorKitSelector(player, handlers, hunterActive) {
     });
 }
 function showHuntStatus(player, handlers, hunterActive) {
-    const hunter = getHunter();
+    const hunters = getHunters();
     const target = getTarget();
     const bed = getBed();
     const respawnStatus = getLastRespawnStatus();
     const huntState = getHuntState();
+    
     const lines = [
         `§fHunt State: ${isRespawning() ? "§eRespawning" : (hunterActive ? "§cActive" : "§7Idle")}`,
         `§fTarget Player: ${target ? `§e${target.name}` : "§7None"}`,
-        `§fAI Level: §6${describeAILevel(getAILevel())}`,
-        `§fAI Phase: §b${getAIState()}`,
-        `§fHunter Dimension: ${hunter ? `§a${hunter.dimension.id.replace("minecraft:", "")}` : "§7None"}`,
-        `§fDeaths: §c${getDeathCount()}`,
         `§fWin Condition: §6${describeWinCondition(huntState.winCondition)}`,
-        `§fScaling: §7${getScalingDescription(getAILevel(), getDeathCount(), huntState.huntStartTick)}`,
-        `§fEquipment Persistence: ${getEquipmentPersistence() ? "§aOn" : "§cOff"}`,
-        `§fTracked Bed: ${bed.pos ? `§a${bed.dimId} @ ${Math.floor(bed.pos.x)} ${Math.floor(bed.pos.y)} ${Math.floor(bed.pos.z)}` : "§7None"}`,
+        `§fTracked Bed: ${bed.pos ? `§a${bed.dimId} @ ${Math.floor(bed.pos.x)} ${Math.floor(bed.pos.y)} ${Math.floor(bed.pos.z)}` : "§7None"}`
+    ];
+    
+    if (hunterActive && hunters.length > 0) {
+        lines.push("", "§l§fActive Hunter Squad:");
+        hunters.forEach((h, i) => {
+            let entityLoc = "Unknown";
+            let dimName = "Overworld";
+            let healthText = "Unknown HP";
+            try {
+                const loc = h.entity.location;
+                entityLoc = `${Math.floor(loc.x)} ${Math.floor(loc.y)} ${Math.floor(loc.z)}`;
+                dimName = h.entity.dimension.id.replace("minecraft:", "");
+                const health = h.entity.getComponent("minecraft:health");
+                if (health) {
+                    healthText = `${Math.round(health.currentValue)}/${health.defaultValue} HP`;
+                }
+            } catch (_) {}
+            
+            const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
+            lines.push(
+                `§bH${i + 1}: ${h.name} §7(§e${classMeta.name}§7)`,
+                `  §fState: §a${healthText} §7| §fAI: §6${describeAILevel(h.aiLevel)}`,
+                `  §fPos: §a${dimName} @ ${entityLoc}`,
+                `  §fDeaths: §c${h.deathCount} §7| §fLives Left: §d${h.lives ?? "N/A"}`
+            );
+        });
+    } else {
+        lines.push("", "§7No hunters active currently.");
+    }
+    
+    lines.push("", "§l§fSystem Respawn Info:");
+    lines.push(
         `§fLast Respawn: ${respawnStatus.success === true ? "§aSuccess" : respawnStatus.success === false ? "§cFailed" : "§7Pending"}`,
         `§fRespawn Stage: §7${respawnStatus.stage}`
-    ];
+    );
     if (getRespawnDebug()) {
         lines.push(
             `§fRespawn Reason: §7${respawnStatus.reason ?? "None"}`,
-            `§fRespawn Source: §7${respawnStatus.source ?? "None"}`,
             `§fAttempts: §7${respawnStatus.attempts ?? 0}`
         );
     }
+    
     const form = new ActionFormData()
         .title("§lHUNT STATUS")
         .body(lines.join("\n"))
@@ -610,4 +642,278 @@ function showHuntStatus(player, handlers, hunterActive) {
 export function clearPlayerConfig(playerId) {
     playerConfigs.delete(playerId);
     lastUsedConfigs.delete(playerId);
+}
+
+function showSquadLobby(player, handlers, hunterActive) {
+    const config = getConfig(player.id);
+    const squadFormMeta = serverForm?.squad_form || {};
+    const title = squadFormMeta.title || "§l§4MANHUNT SQUAD LOBBY";
+    
+    const form = new ActionFormData()
+        .title(title)
+        .body(`§7Configure class, difficulty, name, and skins for each hunter in your squad.\n\n§fCurrent Squad Size: §d${config.squadSize || 1}`);
+    
+    const actions = [];
+    
+    addMenuButton(form, actions, "§l§6Squad Size & Presets\n§r§7Apply presets or change squad size", () => {
+        showSquadSizeAndPresets(player, handlers, hunterActive);
+    });
+    
+    const squadSize = config.squadSize || 1;
+    if (!config.squad) config.squad = [];
+    while (config.squad.length < squadSize) {
+        const idx = config.squad.length;
+        const classes = ["default", "knight", "archer", "saboteur"];
+        config.squad.push({
+            name: `Hunter ${idx + 1}`,
+            skinId: idx % 8,
+            classId: classes[idx % classes.length],
+            aiLevel: config.aiLevel || "normal",
+            enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
+            boatHandling: config.boatHandling || "destroy",
+            inventoryMode: config.inventoryMode || "starter",
+            creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
+            prepBehavior: config.prepBehavior || "hybrid"
+        });
+    }
+    
+    for (let i = 0; i < squadSize; i++) {
+        const hunterConf = config.squad[i];
+        const classMeta = serverForm?.classes?.[hunterConf.classId] || { name: hunterConf.classId };
+        const className = classMeta.name;
+        const skinName = SKIN_OPTIONS[hunterConf.skinId]?.name ?? "Steve";
+        const aiName = describeAILevel(hunterConf.aiLevel);
+        
+        addMenuButton(
+            form, actions, 
+            `§l§bSlot ${i + 1}: ${hunterConf.name}\n§r§7Class: ${className} | AI: ${aiName} | Skin: ${skinName}`,
+            () => {
+                showHunterSlotEditor(player, i, handlers, hunterActive);
+            }
+        );
+    }
+    
+    addMenuButton(form, actions, "§l§7Back to Menu", () => {
+        showSpawnMenu(player, handlers, hunterActive);
+    });
+    
+    form.show(player).then((res) => {
+        if (res.canceled) {
+            showSpawnMenu(player, handlers, hunterActive);
+            return;
+        }
+        const action = actions[res.selection];
+        if (action) action();
+    }).catch(() => {
+        showSpawnMenu(player, handlers, hunterActive);
+    });
+}
+
+function showSquadSizeAndPresets(player, handlers, hunterActive) {
+    const config = getConfig(player.id);
+    const form = new ActionFormData()
+        .title("§lSQUAD PRESETS")
+        .body("§7Choose a starting squad preset or adjust size manually.");
+    
+    const actions = [];
+    
+    const presets = serverForm?.squad_form?.presets || [];
+    for (const preset of presets) {
+        addMenuButton(form, actions, `§l${preset.name}`, () => {
+            const presetClasses = preset.classes || ["default"];
+            config.squadSize = presetClasses.length;
+            config.squad = presetClasses.map((clsId, idx) => {
+                const classMeta = serverForm?.classes?.[clsId] || { name: `${clsId} Hunter` };
+                const names = ["Steve", "Alex", "Zombie", "Skeleton", "Creeper", "Custom", "Dream", "Techno"];
+                const name = `${classMeta.name.split(" ")[0]} ${names[idx % names.length]}`;
+                return {
+                    name: name,
+                    skinId: idx % 8,
+                    classId: clsId,
+                    aiLevel: config.aiLevel || "normal",
+                    enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
+                    boatHandling: config.boatHandling || "destroy",
+                    inventoryMode: config.inventoryMode || "starter",
+                    creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
+                    prepBehavior: config.prepBehavior || "hybrid"
+                };
+            });
+            player.onScreenDisplay.setActionBar(`§aApplied preset: ${preset.name.split("\n")[0]}`);
+            showSquadLobby(player, handlers, hunterActive);
+        });
+    }
+    
+    addMenuButton(form, actions, "§l§bSet Squad Size Manually\n§r§7Choose squad size from 1 to 4", () => {
+        system.run(() => {
+            const modal = new ModalFormData()
+                .title("§lMANUAL SQUAD SIZE")
+                .slider("Squad Size", 1, 4, 1, config.squadSize || 1);
+            modal.show(player).then((res) => {
+                if (res.canceled) {
+                    showSquadSizeAndPresets(player, handlers, hunterActive);
+                    return;
+                }
+                const newSize = Math.floor(res.formValues?.[0] ?? config.squadSize);
+                config.squadSize = newSize;
+                if (!config.squad) config.squad = [];
+                while (config.squad.length < newSize) {
+                    const idx = config.squad.length;
+                    const classes = ["default", "knight", "archer", "saboteur"];
+                    const classId = classes[idx % classes.length];
+                    config.squad.push({
+                        name: `Hunter ${idx + 1}`,
+                        skinId: idx % 8,
+                        classId: classId,
+                        aiLevel: config.aiLevel || "normal",
+                        enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
+                        boatHandling: config.boatHandling || "destroy",
+                        inventoryMode: config.inventoryMode || "starter",
+                        creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
+                        prepBehavior: config.prepBehavior || "hybrid"
+                    });
+                }
+                if (config.squad.length > newSize) {
+                    config.squad = config.squad.slice(0, newSize);
+                }
+                player.onScreenDisplay.setActionBar(`§aSquad size set to §d${newSize}`);
+                showSquadLobby(player, handlers, hunterActive);
+            }).catch(() => {
+                showSquadSizeAndPresets(player, handlers, hunterActive);
+            });
+        });
+    });
+    
+    addMenuButton(form, actions, "§l§7Back", () => {
+        showSquadLobby(player, handlers, hunterActive);
+    });
+    
+    form.show(player).then((res) => {
+        if (res.canceled) {
+            showSquadLobby(player, handlers, hunterActive);
+            return;
+        }
+        const action = actions[res.selection];
+        if (action) action();
+    }).catch(() => {
+        showSquadLobby(player, handlers, hunterActive);
+    });
+}
+
+function showHunterSlotEditor(player, slotIndex, handlers, hunterActive) {
+    const config = getConfig(player.id);
+    const hConf = config.squad[slotIndex];
+    
+    const classKeys = Object.keys(serverForm?.classes || {});
+    const classNames = classKeys.map(k => serverForm.classes[k].name);
+    const defaultClassIdx = Math.max(0, classKeys.indexOf(hConf.classId));
+    
+    const aiKeys = AI_LEVELS.map(l => l.id);
+    const aiNames = AI_LEVELS.map(l => l.name);
+    const defaultAIIdx = Math.max(0, aiKeys.indexOf(hConf.aiLevel));
+    
+    const skinNames = SKIN_OPTIONS.map(s => s.name);
+    const defaultSkinIdx = Math.max(0, SKIN_OPTIONS.findIndex(s => s.id === hConf.skinId));
+    
+    const prepKeys = PREP_BEHAVIORS.map(b => b.id);
+    const prepNames = PREP_BEHAVIORS.map(b => b.name);
+    const defaultPrepIdx = Math.max(0, prepKeys.indexOf(hConf.prepBehavior));
+    
+    system.run(() => {
+        const form = new ModalFormData()
+            .title(`§lEDIT HUNTER ${slotIndex + 1}`)
+            .textField("Hunter Name", "Name", hConf.name)
+            .dropdown("Class Profile", classNames, defaultClassIdx)
+            .dropdown("AI Difficulty", aiNames, defaultAIIdx)
+            .dropdown("Skin / Model", skinNames, defaultSkinIdx)
+            .dropdown("Gathering Behavior", prepNames, defaultPrepIdx)
+            .toggle("Enable Taunts", hConf.enableTaunts !== undefined ? hConf.enableTaunts : true);
+        
+        form.show(player).then((res) => {
+            if (res.canceled || res.cancelationReason === "UserBusy") {
+                if (res.cancelationReason === "UserBusy") {
+                    system.runTimeout(() => {
+                        showHunterSlotEditor(player, slotIndex, handlers, hunterActive);
+                    }, 20);
+                    return;
+                }
+                showSquadLobby(player, handlers, hunterActive);
+                return;
+            }
+            
+            const formValues = res.formValues || [];
+            const rawName = String(formValues[0] || "").trim();
+            hConf.name = rawName.length > 0 ? rawName.substring(0, 24) : `Hunter ${slotIndex + 1}`;
+            
+            const classIdx = formValues[1] ?? defaultClassIdx;
+            hConf.classId = classKeys[classIdx] || "default";
+            
+            const aiIdx = formValues[2] ?? defaultAIIdx;
+            hConf.aiLevel = aiKeys[aiIdx] || "normal";
+            
+            const skinIdx = formValues[3] ?? defaultSkinIdx;
+            hConf.skinId = SKIN_OPTIONS[skinIdx]?.id ?? 0;
+            
+            const prepIdx = formValues[4] ?? defaultPrepIdx;
+            hConf.prepBehavior = prepKeys[prepIdx] || "hybrid";
+            
+            hConf.enableTaunts = !!formValues[5];
+            
+            hConf.boatHandling = config.boatHandling || "destroy";
+            hConf.inventoryMode = config.inventoryMode || "starter";
+            hConf.creatorKitId = config.creatorKitId || DEFAULT_CREATOR_KIT_ID;
+            
+            player.onScreenDisplay.setActionBar(`§aHunter ${slotIndex + 1} updated successfully!`);
+            showSquadLobby(player, handlers, hunterActive);
+        }).catch(() => {
+            showSquadLobby(player, handlers, hunterActive);
+        });
+    });
+}
+
+function showAchievementsChecklist(player, handlers, hunterActive) {
+    const unlocked = getUnlockedAchievements(player);
+    const totalCount = ACHIEVEMENTS.length;
+    const unlockedCount = ACHIEVEMENTS.filter(a => unlocked.includes(a.id)).length;
+    
+    const pct = Math.round((unlockedCount / totalCount) * 100);
+    const progressText = `§fProgress: §a${unlockedCount}/${totalCount} §7(§e${pct}%§7)\n\n§7Complete manhunt challenges to unlock persistent trophies!`;
+    
+    const form = new ActionFormData()
+        .title("§l§6🏆 ACHIEVEMENTS CHECKLIST")
+        .body(progressText);
+    
+    const actions = [];
+    
+    for (const ach of ACHIEVEMENTS) {
+        const isUnlocked = unlocked.includes(ach.id);
+        const prefix = isUnlocked ? "§a§l✔ " : "§c§l✘ ";
+        const status = isUnlocked ? "§aUnlocked" : "§7Locked";
+        addMenuButton(
+            form, actions, 
+            `${prefix}${ach.name}\n§r§7${status} - ${ach.description}`, 
+            () => {
+                if (isUnlocked) {
+                    player.sendMessage(`§6§l🏆 Achievement Unlocked: §e${ach.name}\n§7${ach.description}`);
+                } else {
+                    player.sendMessage(`§c§l🔒 Locked: §e${ach.name}\n§7Try to perform this challenge in-game!`);
+                }
+                showAchievementsChecklist(player, handlers, hunterActive);
+            }
+        );
+    }
+    
+    addMenuButton(form, actions, "§l§7Back to Menu", () => {
+        showSpawnMenu(player, handlers, hunterActive);
+    });
+    
+    form.show(player).then((res) => {
+        if (res.canceled) {
+            showSpawnMenu(player, handlers, hunterActive);
+            return;
+        }
+        const action = actions[res.selection];
+        if (action) action();
+    }).catch(() => {
+        showSpawnMenu(player, handlers, hunterActive);
+    });
 }

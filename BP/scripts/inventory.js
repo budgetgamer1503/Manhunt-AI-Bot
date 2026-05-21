@@ -19,24 +19,28 @@ export const WEAPON_DAMAGE = {
 const ARMOR_VALUES = {
     Head: {
         "minecraft:leather_helmet": 1,
+        "minecraft:chainmail_helmet": 1.5,
         "minecraft:iron_helmet": 2,
         "minecraft:diamond_helmet": 3,
         "minecraft:netherite_helmet": 4
     },
     Chest: {
         "minecraft:leather_chestplate": 3,
+        "minecraft:chainmail_chestplate": 4.5,
         "minecraft:iron_chestplate": 6,
         "minecraft:diamond_chestplate": 8,
         "minecraft:netherite_chestplate": 9
     },
     Legs: {
         "minecraft:leather_leggings": 2,
+        "minecraft:chainmail_leggings": 3.5,
         "minecraft:iron_leggings": 5,
         "minecraft:diamond_leggings": 6,
         "minecraft:netherite_leggings": 7
     },
     Feet: {
         "minecraft:leather_boots": 1,
+        "minecraft:chainmail_boots": 1.5,
         "minecraft:iron_boots": 2,
         "minecraft:diamond_boots": 3,
         "minecraft:netherite_boots": 4
@@ -214,10 +218,10 @@ const AXE_PRIORITY = [
     "minecraft:diamond_axe", "minecraft:iron_axe", "minecraft:stone_axe", "minecraft:wooden_axe"
 ];
 const ARMOR_PRIORITY = {
-    Head: ["minecraft:netherite_helmet", "minecraft:diamond_helmet", "minecraft:iron_helmet", "minecraft:leather_helmet"],
-    Chest: ["minecraft:netherite_chestplate", "minecraft:diamond_chestplate", "minecraft:iron_chestplate", "minecraft:leather_chestplate"],
-    Legs: ["minecraft:netherite_leggings", "minecraft:diamond_leggings", "minecraft:iron_leggings", "minecraft:leather_leggings"],
-    Feet: ["minecraft:netherite_boots", "minecraft:diamond_boots", "minecraft:iron_boots", "minecraft:leather_boots"]
+    Head: ["minecraft:netherite_helmet", "minecraft:diamond_helmet", "minecraft:iron_helmet", "minecraft:chainmail_helmet", "minecraft:leather_helmet"],
+    Chest: ["minecraft:netherite_chestplate", "minecraft:diamond_chestplate", "minecraft:iron_chestplate", "minecraft:chainmail_chestplate", "minecraft:leather_chestplate"],
+    Legs: ["minecraft:netherite_leggings", "minecraft:diamond_leggings", "minecraft:iron_leggings", "minecraft:chainmail_leggings", "minecraft:leather_leggings"],
+    Feet: ["minecraft:netherite_boots", "minecraft:diamond_boots", "minecraft:iron_boots", "minecraft:chainmail_boots", "minecraft:leather_boots"]
 };
 const BONUS_BLOCKS = [
     "minecraft:cobblestone", "minecraft:stone", "minecraft:oak_planks", "minecraft:spruce_planks",
@@ -270,7 +274,16 @@ const ITEM_CAPS = {
     "minecraft:acacia_log": 16,
     "minecraft:dark_oak_log": 16,
     "minecraft:mangrove_log": 16,
-    "minecraft:cherry_log": 16
+    "minecraft:cherry_log": 16,
+    "minecraft:bow": 1,
+    "minecraft:crossbow": 1,
+    "minecraft:arrow": 64,
+    "minecraft:flint_and_steel": 1,
+    "minecraft:web": 64,
+    "minecraft:chainmail_helmet": 1,
+    "minecraft:chainmail_chestplate": 1,
+    "minecraft:chainmail_leggings": 1,
+    "minecraft:chainmail_boots": 1
 };
 const CREATOR_KIT_FALLBACK_ITEMS = {
     "minecraft:bread": 10,
@@ -670,6 +683,10 @@ export class HunterInventory {
         return preserved;
     }
     getPreferredMainhandItem() {
+        if (this.hasItem("minecraft:arrow")) {
+            if (this.hasItem("minecraft:bow")) return "minecraft:bow";
+            if (this.hasItem("minecraft:crossbow")) return "minecraft:crossbow";
+        }
         return this.getBestWeapon() || this.getBestAxe() || this.getBestPickaxe() || this.getBestFood() || this.getBridgeBlock();
     }
     showItemInHand(hunter, itemTypeId, actionEvent, durationTicks) {

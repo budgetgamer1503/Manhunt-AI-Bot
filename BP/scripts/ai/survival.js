@@ -22,7 +22,7 @@ export class SurvivalSystem {
     get target() { return this.brain.target; }
     get inventory() { return this.brain.inventory; }
     get cooldowns() { return this.brain.cooldowns; }
-    get profile() { return getProfile(this.brain.aiLevel); }
+    get profile() { return this.brain.profile; }
 
     reset() {
         this.fallTicks = 0;
@@ -80,6 +80,17 @@ export class SurvivalSystem {
 
         if (!h || !inv) return null;
 
+        // Nether: Equip gold armor if available and not wearing any gold armor
+        this._checkNetherGoldArmor(h, inv);
+
+        // End: Avoid Endermen aggro / handle Endermen
+        const enderAction = this._checkEndermanThreat(h, inv);
+        if (enderAction) return enderAction;
+
+        // Hazards: sweet berry bushes, magma, powder snow
+        const hazardAction = this._checkHazards(h, inv);
+        if (hazardAction) return hazardAction;
+
         const lava = this._checkLavaEscape(h, inv);
         if (lava) return lava;
 
@@ -99,6 +110,142 @@ export class SurvivalSystem {
             }
         }
 
+        return null;
+    }
+
+    _hasLeatherBoots(hunter) {
+        try {
+            const equippable = hunter.getComponent("minecraft:equippable");
+            if (equippable) {
+                const feet = equippable.getEquipment("Feet");
+                return feet?.typeId === "minecraft:leather_boots";
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    _hasFireResistance(hunter) {
+        try {
+            const comp = hunter.getComponent("minecraft:effects");
+            if (comp) {
+                return hunter.getEffect("fire_resistance") !== undefined;
+            }
+        } catch (_) {}
+        return false;
+    }
+
+    _checkHazards(hunter, inventory) {
+        try {
+            const pos = hunter.location;
+            const dim = hunter.dimension;
+            const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+            
+            const feetBlock = dim.getBlock({ x: fx, y: fy, z: fz });
+            const belowBlock = dim.getBlock({ x: fx, y: fy - 1, z: fz });
+            
+            // Sweet berry bushes avoidance
+            if (feetBlock?.typeId === "minecraft:sweet_berry_bush" || belowBlock?.typeId === "minecraft:sweet_berry_bush") {
+                return {
+                    type: "impulse",
+                    x: (Math.random() - 0.5) * 0.5,
+                    y: 0.38,
+                    z: (Math.random() - 0.5) * 0.5
+                };
+            }
+            
+            // Powder snow avoidance
+            if (feetBlock?.typeId === "minecraft:powder_snow" || belowBlock?.typeId === "minecraft:powder_snow") {
+                if (!this._hasLeatherBoots(hunter)) {
+                    if (inventory.hasWaterBucket()) {
+                        return { type: "place_water", blockPos: { x: fx, y: fy, z: fz }, showItem: "minecraft:water_bucket", tempWater: true };
+                    }
+                    const block = inventory.getBridgeBlock();
+                    if (block) {
+                        return { type: "place_block", blockPos: { x: fx, y: fy, z: fz }, blockType: block, showItem: block, stopMovement: true };
+                    }
+                    return { type: "impulse", x: (Math.random() - 0.5) * 0.6, y: 0.45, z: (Math.random() - 0.5) * 0.6 };
+                }
+            }
+            
+            // Magma block avoidance
+            if (belowBlock?.typeId === "minecraft:magma") {
+                if (!this._hasFireResistance(hunter)) {
+                    const block = inventory.getBridgeBlock();
+                    if (block) {
+                        return { type: "place_block", blockPos: { x: fx, y: fy - 1, z: fz }, blockType: block, showItem: block };
+                    }
+                    return { type: "impulse", x: (Math.random() - 0.5) * 0.6, y: 0.38, z: (Math.random() - 0.5) * 0.6 };
+                }
+            }
+        } catch (_) {}
+        return null;
+    }
+
+    _checkNetherGoldArmor(hunter, inventory) {
+        try {
+            if (hunter.dimension.id !== "minecraft:nether") return;
+            
+            const equippable = hunter.getComponent("minecraft:equippable");
+            if (!equippable) return;
+            
+            const goldHelmet = equippable.getEquipment("Head")?.typeId === "minecraft:golden_helmet";
+            const goldChest = equippable.getEquipment("Chest")?.typeId === "minecraft:golden_chestplate";
+            const goldLegs = equippable.getEquipment("Legs")?.typeId === "minecraft:golden_leggings";
+            const goldBoots = equippable.getEquipment("Feet")?.typeId === "minecraft:golden_boots";
+            
+            if (goldHelmet || goldChest || goldLegs || goldBoots) return;
+            
+            const goldArmor = [
+                { id: "minecraft:golden_helmet", slot: "Head" },
+                { id: "minecraft:golden_chestplate", slot: "Chest" },
+                { id: "minecraft:golden_leggings", slot: "Legs" },
+                { id: "minecraft:golden_boots", slot: "Feet" }
+            ];
+            
+            for (const item of goldArmor) {
+                if (inventory.hasItem(item.id)) {
+                    hunter.runCommand(`replaceitem entity @s slot.armor.${item.slot.toLowerCase()} 0 ${item.id} 1`);
+                    break;
+                }
+            }
+        } catch (_) {}
+    }
+
+    _checkEndermanThreat(hunter, inventory) {
+        try {
+            if (hunter.dimension.id !== "minecraft:the_end") return null;
+            
+            const endermen = hunter.dimension.getEntities({
+                type: "minecraft:enderman",
+                location: hunter.location,
+                maxDistance: 8
+            });
+            
+            if (endermen.length === 0) return null;
+            
+            let hostileEnderman = false;
+            for (const enderman of endermen) {
+                try {
+                    const vel = enderman.getVelocity();
+                    const speed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+                    if (speed > 0.12) {
+                        hostileEnderman = true;
+                        break;
+                    }
+                } catch (_) {}
+            }
+            
+            if (hostileEnderman && inventory.hasWaterBucket()) {
+                const pos = hunter.location;
+                const fx = Math.floor(pos.x), fy = Math.floor(pos.y), fz = Math.floor(pos.z);
+                return {
+                    type: "place_water",
+                    blockPos: { x: fx, y: fy, z: fz },
+                    showItem: "minecraft:water_bucket",
+                    tempWater: true
+                };
+            }
+        } catch (_) {}
         return null;
     }
 

@@ -136,6 +136,87 @@ export const CREATOR_KITS = [
             "minecraft:water_bucket",
             "minecraft:torch"
         ]
+    },
+    {
+        id: "knight_starter",
+        name: "Knight Starter Kit",
+        description: "Heavy defense kit with iron armor, sword, shield, food, and blocks.",
+        items: {
+            "minecraft:iron_sword": 1,
+            "minecraft:shield": 1,
+            "minecraft:iron_helmet": 1,
+            "minecraft:iron_chestplate": 1,
+            "minecraft:iron_leggings": 1,
+            "minecraft:iron_boots": 1,
+            "minecraft:bread": 12,
+            "minecraft:cobblestone": 32
+        },
+        activation: {
+            anyOf: [
+                "minecraft:iron_chestplate",
+                "minecraft:shield"
+            ]
+        },
+        scoreItems: [
+            "minecraft:iron_sword",
+            "minecraft:shield",
+            "minecraft:iron_chestplate"
+        ]
+    },
+    {
+        id: "archer_starter",
+        name: "Archer Starter Kit",
+        description: "Ranged kit with Bow, Crossbow, Arrows, leather armor, and food.",
+        items: {
+            "minecraft:bow": 1,
+            "minecraft:crossbow": 1,
+            "minecraft:arrow": 64,
+            "minecraft:stone_sword": 1,
+            "minecraft:leather_helmet": 1,
+            "minecraft:leather_chestplate": 1,
+            "minecraft:leather_leggings": 1,
+            "minecraft:leather_boots": 1,
+            "minecraft:cooked_beef": 12,
+            "minecraft:cobblestone": 32
+        },
+        activation: {
+            anyOf: [
+                "minecraft:bow",
+                "minecraft:crossbow",
+                "minecraft:arrow"
+            ]
+        },
+        scoreItems: [
+            "minecraft:bow",
+            "minecraft:crossbow",
+            "minecraft:arrow"
+        ]
+    },
+    {
+        id: "saboteur_starter",
+        name: "Saboteur Starter Kit",
+        description: "Tactical kit with Flint & Steel, Cobwebs, splash slowness, and chain armor.",
+        items: {
+            "minecraft:stone_sword": 1,
+            "minecraft:stone_pickaxe": 1,
+            "minecraft:flint_and_steel": 1,
+            "minecraft:web": 16,
+            "minecraft:chainmail_helmet": 1,
+            "minecraft:chainmail_chestplate": 1,
+            "minecraft:leather_boots": 1,
+            "minecraft:bread": 12,
+            "minecraft:cobblestone": 32
+        },
+        activation: {
+            anyOf: [
+                "minecraft:flint_and_steel",
+                "minecraft:web"
+            ]
+        },
+        scoreItems: [
+            "minecraft:flint_and_steel",
+            "minecraft:web"
+        ]
     }
 ];
 export function getCreatorKitById(kitId) {

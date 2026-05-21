@@ -6,6 +6,7 @@
 import { world, system, EffectTypes, BlockPermutation } from "@minecraft/server";
 import { HunterInventory } from "./inventory.js";
 import { DEFAULT_CREATOR_KIT_ID } from "./kits.js";
+import { getClass } from "./ai/classes.js";
 import { debug, error } from "./logger.js";
 const MODULE = "entity_manager";
 const HUNTER_TYPE = "manhunt:hunter";
@@ -13,8 +14,7 @@ const HUNTER_TAG = "hunter_active";
 const RESPAWN_DELAY = 1200;
 const RESPAWN_INVINCIBILITY = 100;
 const CONFIG_PROP = "manhunt:last_config";
-let activeHunter = null;
-let hunterInventory = null;
+let activeHunters = [];
 let targetPlayer = null;
 let targetPlayers = new Set();
 let hunterName = "Hunter";
@@ -50,10 +50,14 @@ let hunterTimeLimitMinutes = 30;
 let hunterKillTarget = 3;
 let respawnContext = null;
 const RESPAWN_MAX_RETRIES = 3;
+
 export function getHunter() {
-    if (activeHunter) {
-        try { const _ = activeHunter.location; return activeHunter; }
-        catch (_) { activeHunter = null; }
+    if (activeHunters.length > 0) {
+        activeHunters = activeHunters.filter(h => {
+            try { const _ = h.entity.location; return true; }
+            catch (_) { return false; }
+        });
+        if (activeHunters.length > 0) return activeHunters[0].entity;
     }
     for (const dimId of ["overworld", "nether", "the_end"]) {
         try {
@@ -62,15 +66,37 @@ export function getHunter() {
             for (const h of hunters) {
                 try {
                     const _ = h.location;
-                    activeHunter = h;
-                    if (!hunterInventory) hunterInventory = new HunterInventory();
-                    return activeHunter;
+                    const inv = new HunterInventory();
+                    activeHunters.push({
+                        entity: h,
+                        inventory: inv,
+                        classId: "default",
+                        name: h.nameTag || "Hunter",
+                        skinId: 0,
+                        aiLevel: hunterAILevel,
+                        enableTaunts: hunterEnableTaunts,
+                        boatHandling: hunterBoatHandling,
+                        deathCount: 0,
+                        lives: hunterMaxLives
+                    });
+                    return h;
                 } catch (_) { }
             }
         } catch (_) { }
     }
     return null;
 }
+
+export function getHunters() {
+    if (activeHunters.length > 0) {
+        activeHunters = activeHunters.filter(h => {
+            try { const _ = h.entity.location; return true; }
+            catch (_) { return false; }
+        });
+    }
+    return activeHunters;
+}
+
 export function getTarget() {
     if (targetPlayer) {
         try { const _ = targetPlayer.location; return targetPlayer; }
@@ -101,7 +127,15 @@ export function removeTarget(player) {
 export function clearTargets() {
     targetPlayers.clear();
 }
-export function getInventory() { return hunterInventory; }
+export function getInventory() {
+    const h = getHunters();
+    return h[0]?.inventory ?? null;
+}
+export function getInventoryForHunter(entity) {
+    if (!entity) return null;
+    const h = getHunters().find(h => h.entity.id === entity.id);
+    return h ? h.inventory : null;
+}
 export function isActive() { return getHunter() !== null; }
 export function isRespawning() { return respawnInProgress; }
 export function getDeathCount() { return hunterDeathCount; }
@@ -175,25 +209,80 @@ export function spawn(player, config, playerLoadout = null) {
     try {
         const dim = player.dimension;
         const pPos = player.location;
-        const angle = Math.random() * Math.PI * 2;
-        const dist = 10 + Math.random() * 10;
-        const spawnX = pPos.x + Math.cos(angle) * dist;
-        const spawnZ = pPos.z + Math.sin(angle) * dist;
-        let spawnY = pPos.y;
-        try {
-            for (let y = Math.floor(pPos.y) + 10; y >= Math.max(pPos.y - 20, -64); y--) {
-                const block = dim.getBlock({ x: Math.floor(spawnX), y, z: Math.floor(spawnZ) });
-                if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
-                    spawnY = y + 1;
-                    break;
-                }
+        activeHunters = [];
+
+        const squadSize = config.squadSize || 1;
+        const squadConfigs = config.squad || [];
+        if (squadConfigs.length === 0) {
+            for (let i = 0; i < squadSize; i++) {
+                const name = i === 0 ? (config.name || "Hunter") : `${config.name || "Hunter"} ${i + 1}`;
+                const classes = ["default", "knight", "archer", "saboteur"];
+                const classId = config.classId || classes[i % classes.length];
+                squadConfigs.push({
+                    name,
+                    skinId: (config.skinId + i) % 6,
+                    classId,
+                    aiLevel: config.aiLevel || "normal",
+                    enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
+                    boatHandling: config.boatHandling || "destroy",
+                    inventoryMode: config.inventoryMode || "starter",
+                    creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
+                    prepBehavior: config.prepBehavior || "hybrid"
+                });
             }
-        } catch (_) { spawnY = pPos.y; }
-        const hunter = dim.spawnEntity(HUNTER_TYPE, { x: spawnX, y: spawnY, z: spawnZ });
-        hunter.addTag(HUNTER_TAG);
-        hunter.nameTag = config.name || "Hunter";
-        try { hunter.triggerEvent(`manhunt:set_skin_${config.skinId}`); } catch (_) { }
-        activeHunter = hunter;
+        }
+
+        for (let i = 0; i < squadConfigs.length; i++) {
+            const hConfig = squadConfigs[i];
+            const angle = (Math.random() * Math.PI * 2) + (i * (Math.PI * 2 / squadConfigs.length));
+            const dist = 10 + Math.random() * 5;
+            const spawnX = pPos.x + Math.cos(angle) * dist;
+            const spawnZ = pPos.z + Math.sin(angle) * dist;
+            let spawnY = pPos.y;
+            try {
+                for (let y = Math.floor(pPos.y) + 10; y >= Math.max(pPos.y - 20, -64); y--) {
+                    const block = dim.getBlock({ x: Math.floor(spawnX), y, z: Math.floor(spawnZ) });
+                    if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
+                        spawnY = y + 1;
+                        break;
+                    }
+                }
+            } catch (_) { spawnY = pPos.y; }
+
+            const hunter = dim.spawnEntity(HUNTER_TYPE, { x: spawnX, y: spawnY, z: spawnZ });
+            hunter.addTag(HUNTER_TAG);
+            hunter.nameTag = hConfig.name;
+            try { hunter.triggerEvent(`manhunt:set_skin_${hConfig.skinId}`); } catch (_) { }
+
+            try {
+                const classData = getClass(hConfig.classId);
+                const speedAttr = hunter.getAttribute("minecraft:movement");
+                if (speedAttr && classData) {
+                    speedAttr.setCurrentValue(speedAttr.defaultValue + (classData.speedModifier ?? 0));
+                }
+            } catch (_) {}
+
+            const inv = new HunterInventory();
+            inv.initializeForConfig(hConfig, playerLoadout);
+
+            activeHunters.push({
+                entity: hunter,
+                inventory: inv,
+                classId: hConfig.classId,
+                name: hConfig.name,
+                skinId: hConfig.skinId,
+                aiLevel: hConfig.aiLevel,
+                enableTaunts: hConfig.enableTaunts,
+                boatHandling: hConfig.boatHandling,
+                deathCount: 0,
+                lives: config.maxLives || 3
+            });
+
+            system.runTimeout(() => {
+                try { inv.equipBest(hunter); } catch (_) { }
+            }, 5);
+        }
+
         hunterName = config.name || "Hunter";
         hunterSkinId = config.skinId || 0;
         hunterEnableTaunts = config.enableTaunts !== undefined ? config.enableTaunts : true;
@@ -211,33 +300,28 @@ export function spawn(player, config, playerLoadout = null) {
         targetPlayers.clear();
         targetPlayers.add(player.id);
         hunterDeathCount = 0;
-        hunterInventory = new HunterInventory();
-        hunterInventory.initializeForConfig(config, playerLoadout);
-        system.runTimeout(() => {
-            try { hunterInventory.equipBest(hunter); } catch (_) { }
-        }, 5);
-        debug(MODULE, `Hunter spawned: ${hunterName} (AI: ${hunterAILevel}, Win: ${hunterWinCondition})`);
-        return hunter;
+
+        debug(MODULE, `Hunters spawned: squad size ${squadConfigs.length}`);
+        return activeHunters[0]?.entity;
     } catch (e) {
-        error(MODULE, "Failed to spawn hunter", e);
+        error(MODULE, "Failed to spawn hunters", e);
     }
     return null;
 }
 export function despawn(dropItems = false) {
     if (respawnInProgress) return;
-    if (activeHunter) {
+    for (const h of activeHunters) {
         try {
-            if (dropItems && hunterInventory) {
-                hunterInventory.dropAll(activeHunter.dimension, activeHunter.location);
+            if (dropItems && h.inventory) {
+                h.inventory.dropAll(h.entity.dimension, h.entity.location);
             }
         } catch (_) { }
-        try { activeHunter.remove(); } catch (_) {
-            try { activeHunter.kill(); } catch (_) { }
+        try { h.entity.remove(); } catch (_) {
+            try { h.entity.kill(); } catch (_) { }
         }
     }
     cleanupAllHunters();
-    activeHunter = null;
-    hunterInventory = null;
+    activeHunters = [];
     targetPlayer = null;
     targetPlayers.clear();
     hunterName = "Hunter";
@@ -260,13 +344,28 @@ export function despawn(dropItems = false) {
 export function canRespawn() {
     return true;
 }
-export function respawn(onComplete) {
+export function respawn(entity, onComplete) {
+    if (!entity) {
+        if (onComplete) onComplete(null);
+        return;
+    }
+    const hData = activeHunters.find(h => h.entity.id === entity.id);
+    if (!hData) {
+        if (onComplete) onComplete(null);
+        return;
+    }
     if (!canRespawn()) {
         if (onComplete) onComplete(null);
         return;
     }
+    if (respawnInProgress) {
+        system.runTimeout(() => {
+            respawn(entity, onComplete);
+        }, 20);
+        return;
+    }
     system.runTimeout(() => {
-        respawnHunterStaged(onComplete);
+        respawnHunterStaged(hData, onComplete);
     }, RESPAWN_DELAY);
 }
 function validateCandidatePosition(dim, pos) {
@@ -377,7 +476,7 @@ function updateRespawnStatus(success, stage, reason = "", source = "", attempts 
         console.warn(`[Respawn] stage=${stage} success=${success} reason=${reason} source=${source}`);
     }
 }
-function respawnHunterStaged(onComplete, retryCount = 0) {
+function respawnHunterStaged(hData, onComplete, retryCount = 0) {
     if (respawnInProgress) {
         updateRespawnStatus(false, "already_in_progress", "Respawn already in progress");
         if (onComplete) onComplete(null);
@@ -385,10 +484,21 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
     }
     const context = {
         targetPlayer: targetPlayer ? { id: targetPlayer.id, name: targetPlayer.name } : null,
-        configSnapshot: getCurrentConfigSnapshot(),
+        configSnapshot: {
+            name: hData.name,
+            skinId: hData.skinId,
+            classId: hData.classId,
+            aiLevel: hData.aiLevel,
+            enableTaunts: hData.enableTaunts,
+            boatHandling: hData.boatHandling,
+            equipmentPersistence: hunterEquipmentPersistence,
+            inventoryMode: hunterInventoryMode,
+            creatorKitId: hunterCreatorKitId,
+            prepBehavior: hunterPrepBehavior
+        },
         deathLocation: getDeathLocation(),
         bedLocation: getBed(),
-        inventorySnapshot: savedInventory ? savedInventory.toSnapshot() : null,
+        inventorySnapshot: hData.savedInventory ? hData.savedInventory.toSnapshot() : null,
         retryCount: retryCount,
         maxRetries: RESPAWN_MAX_RETRIES,
         failureStage: "",
@@ -396,7 +506,9 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
     };
     respawnContext = context;
     respawnInProgress = true;
-    hunterDeathCount++;
+    hData.deathCount++;
+    hunterDeathCount = activeHunters.reduce((sum, h) => sum + h.deathCount, 0);
+
     updateRespawnStatus(null, "preparing", "Stopping AI and locking respawn");
     let target = targetPlayer;
     if (!target) {
@@ -433,7 +545,8 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
         if (retryCount < RESPAWN_MAX_RETRIES) {
             if (respawnDebug) console.warn(`[Respawn] No valid candidate, retrying (${retryCount + 1}/${RESPAWN_MAX_RETRIES})...`);
             system.runTimeout(() => {
-                respawnHunterStaged(onComplete, retryCount + 1);
+                respawnInProgress = false;
+                respawnHunterStaged(hData, onComplete, retryCount + 1);
             }, 40);
         } else {
             if (onComplete) onComplete(null);
@@ -445,10 +558,20 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
         const dim = world.getDimension(selectedCandidate.dimId);
         const hunter = dim.spawnEntity(HUNTER_TYPE, selectedCandidate.pos);
         hunter.addTag(HUNTER_TAG);
-        hunter.nameTag = hunterName;
-        try { hunter.triggerEvent(`manhunt:set_skin_${hunterSkinId}`); } catch (_) { }
-        activeHunter = hunter;
+        hunter.nameTag = hData.name;
+        try { hunter.triggerEvent(`manhunt:set_skin_${hData.skinId}`); } catch (_) { }
+
+        try {
+            const classData = getClass(hData.classId);
+            const speedAttr = hunter.getAttribute("minecraft:movement");
+            if (speedAttr && classData) {
+                speedAttr.setCurrentValue(speedAttr.defaultValue + (classData.speedModifier ?? 0));
+            }
+        } catch (_) {}
+
+        hData.entity = hunter;
         targetPlayer = target;
+
         system.runTimeout(() => {
             try {
                 const _ = hunter.location;
@@ -458,33 +581,43 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
                 if (retryCount < RESPAWN_MAX_RETRIES) {
                     if (respawnDebug) console.warn(`[Respawn] Retrying (${retryCount + 1}/${RESPAWN_MAX_RETRIES})...`);
                     system.runTimeout(() => {
-                        respawnHunterStaged(onComplete, retryCount + 1);
+                        respawnHunterStaged(hData, onComplete, retryCount + 1);
                     }, 40);
                 } else {
                     if (onComplete) onComplete(null);
                 }
                 return;
             }
-            if (hunterEquipmentPersistence && savedInventory) {
-                hunterInventory = HunterInventory.fromSnapshot(savedInventory);
-                savedInventory = null;
+            if (hunterEquipmentPersistence && hData.savedInventory) {
+                hData.inventory = HunterInventory.fromSnapshot(hData.savedInventory);
+                hData.savedInventory = null;
             } else {
-                hunterInventory = new HunterInventory();
-                const config = getCurrentConfigSnapshot();
-                hunterInventory.initializeForConfig(config, null);
-                savedInventory = null;
+                hData.inventory = new HunterInventory();
+                const config = {
+                    name: hData.name,
+                    skinId: hData.skinId,
+                    classId: hData.classId,
+                    aiLevel: hData.aiLevel,
+                    enableTaunts: hData.enableTaunts,
+                    boatHandling: hData.boatHandling,
+                    inventoryMode: hunterInventoryMode,
+                    creatorKitId: hunterCreatorKitId,
+                    prepBehavior: hunterPrepBehavior
+                };
+                hData.inventory.initializeForConfig(config, null);
+                hData.savedInventory = null;
             }
             applyRespawnBuffs(hunter);
             system.runTimeout(() => {
-                try { hunterInventory.equipBest(hunter); } catch (_) { }
+                try { hData.inventory.equipBest(hunter); } catch (_) { }
             }, 5);
             respawnInProgress = false;
             updateRespawnStatus(true, "completed", "Respawn successful", selectedCandidate.source, retryCount);
             try {
-                target.sendMessage(`§c§l⚔ ${hunterName} §r§7has respawned at ${selectedCandidate.source === "bed" ? "their bed" : "world spawn"}! §7(Death #${hunterDeathCount})`);
+                target.sendMessage(`§c§l⚔ ${hData.name} §r§7has respawned at ${selectedCandidate.source === "bed" ? "their bed" : "world spawn"}! §7(Death #${hData.deathCount})`);
                 target.onScreenDisplay.setTitle("§c§lHUNTER RESPAWNED!", {
                     fadeInDuration: 5, fadeOutDuration: 20, stayDuration: 40,
-                    subtitle: `§7${hunterName} is back for revenge!`
+                    subtitle: `§7${hData.name} is back for revenge!`
                 });
             } catch (_) { }
             if (onComplete) onComplete(hunter);
@@ -495,7 +628,8 @@ function respawnHunterStaged(onComplete, retryCount = 0) {
         if (retryCount < RESPAWN_MAX_RETRIES) {
             if (respawnDebug) console.warn(`[Respawn] Retrying after exception (${retryCount + 1}/${RESPAWN_MAX_RETRIES})...`);
             system.runTimeout(() => {
-                respawnHunterStaged(onComplete, retryCount + 1);
+                respawnInProgress = false;
+                respawnHunterStaged(hData, onComplete, retryCount + 1);
             }, 40);
         } else {
             if (onComplete) onComplete(null);
@@ -656,8 +790,11 @@ function applyRespawnBuffs(hunter) {
 export function getEquipmentPersistence() {
     return hunterEquipmentPersistence;
 }
-export function saveInventoryForRespawn(inventory) {
-    savedInventory = inventory;
+export function saveInventoryForRespawn(entity, inventory) {
+    const hData = activeHunters.find(h => h.entity.id === entity.id);
+    if (hData) {
+        hData.savedInventory = inventory;
+    }
 }
 export function getSavedInventory() {
     return savedInventory;
@@ -666,9 +803,14 @@ export function clearSavedInventory() {
     savedInventory = null;
 }
 export function attemptBedPlacementNearPortal() {
-    const hunter = getHunter();
-    if (!hunter || !hunterInventory) return false;
-    return tryPlaceBedNearPortal(hunter, hunterInventory);
+    const hunters = getHunters();
+    if (hunters.length === 0) return false;
+    for (const h of hunters) {
+        if (h.inventory && h.inventory.hasItem("minecraft:red_bed", 1)) {
+            if (tryPlaceBedNearPortal(h.entity, h.inventory)) return true;
+        }
+    }
+    return false;
 }
 export function cleanupOrphans() {
     cleanupAllHunters();
