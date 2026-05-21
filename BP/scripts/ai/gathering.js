@@ -29,7 +29,6 @@ export class GatheringSystem {
     tickMining() {
         if (!this.miningTarget) return;
 
-        // Sensory Mining Feedback: particle & sound
         try {
             const h = this.hunter;
             if (h) {
@@ -85,7 +84,6 @@ export class GatheringSystem {
 
         inv.attemptSmelt(system.currentTick, this.smeltTimers);
 
-        // Smart Resource Auditing
         if (cd.isReady("place_crafting") && !inv.hasItem("minecraft:crafting_table")) {
             const hasLogs = inv.hasItem("minecraft:oak_log") || inv.hasItem("minecraft:birch_log") || inv.hasItem("minecraft:spruce_log");
             if (hasLogs && !this._isUtilityPlacedNearby(h, "minecraft:crafting_table")) {
@@ -167,7 +165,6 @@ export class GatheringSystem {
                 const drop = inv.getMiningDrop(mt.typeId);
                 if (drop) inv.addItem(drop.typeId, drop.amount);
                 
-                // Breaking sound sensory feedback
                 const breakSound = mt.typeId.includes("log") ? "break.wood" : "break.stone";
                 dim.playSound(breakSound, mt.pos);
             }
@@ -282,7 +279,6 @@ export class GatheringSystem {
                 if (b?.typeId === "minecraft:air") {
                     b.setPermutation(BlockPermutation.resolve(blockType));
                     
-                    // Cover Smelting / Dig-In Check
                     const runner = this.target;
                     let runnerDist = 999;
                     if (runner) {

@@ -15,7 +15,6 @@ export const ACHIEVEMENTS = [
     { id: "bed_breaker", name: "Bed Breaker", description: "Find and destroy a hunter's bed." }
 ];
 
-// In-memory progress for the current hunt
 let currentHuntProgress = {
     arrowDodges: 0,
     tookDamage: false,
@@ -75,32 +74,27 @@ export function unlockAchievement(player, achievementId) {
     }
 }
 
-// Check end-of-hunt achievements
 export function checkEndOfHuntAchievements(player, winner, squadSize, difficulty) {
     if (!player) return;
     
     const elapsedMinutes = (system.currentTick - currentHuntProgress.startTick) / 1200;
 
     if (winner === "runner") {
-        // "Squad Slayer"
         if (squadSize >= 2) {
             unlockAchievement(player, "squad_slayer");
         }
 
-        // "The Great Escape"
         const health = player.getComponent("minecraft:health")?.currentValue;
         if (difficulty === "expert" && health !== undefined && health < 4) {
             unlockAchievement(player, "escape");
         }
 
-        // "Untouchable"
         if (!currentHuntProgress.tookDamage && elapsedMinutes >= 10) {
             unlockAchievement(player, "untouchable");
         }
     }
 }
 
-// Listen for bed destruction
 world.beforeEvents.playerBreakBlock.subscribe((event) => {
     const block = event.block;
     if (block && block.typeId.includes("bed")) {
@@ -111,7 +105,6 @@ world.beforeEvents.playerBreakBlock.subscribe((event) => {
     }
 });
 
-// Listen for projectile dodge
 world.afterEvents.projectileHitBlock.subscribe((event) => {
     const projectile = event.projectile;
     if (projectile && projectile.typeId === "minecraft:arrow") {

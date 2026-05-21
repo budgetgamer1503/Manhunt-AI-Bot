@@ -87,7 +87,6 @@ export class CombatSystem {
 
         if (!h || !t || !inv) return;
 
-        // Dynamic Shield threat rotation
         if (this.shieldActive) {
             this._faceThreat(h, t);
         }
@@ -102,13 +101,11 @@ export class CombatSystem {
         const cdz = cPos.z - h.location.z;
         const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
 
-        // Class-specific combat overrides
         if (classId === "archer" && cDist >= 5.0 && cDist <= 18.0) {
             this._tickArcherArchery(h, combatTarget, inv, cd, p, cDist);
             return;
         }
 
-        // Reset bow pulling if the player gets too close
         if (this.isPullingBow) {
             this.isPullingBow = false;
             this.pullbackTicks = 0;
@@ -123,7 +120,6 @@ export class CombatSystem {
             }
         }
 
-        // Knight blocking chance and cooldown adjustments
         if (cd.isReady("shield") && cDist < p.attackRange + 1 && inv.hasShield() && !this.shieldActive) {
             const shieldDuration = classId === "knight" ? 30 : 20;
             this._equipShield(h, shieldDuration);
@@ -162,7 +158,6 @@ export class CombatSystem {
             }
         }
 
-        // Saboteur tactical deployables
         if (classId === "saboteur" && cd.isReady("place")) {
             this._tickSaboteurTactics(h, combatTarget, inv, cd, cDist);
         }
@@ -189,14 +184,12 @@ export class CombatSystem {
         this.isPullingBow = true;
         this.pullbackTicks += 2;
 
-        // Slowly back away to maintain archery spacing (keep distance 8-15 blocks)
         try {
             const hPos = hunter.location;
             const tPos = target.location;
             const dx = hPos.x - tPos.x;
             const dz = hPos.z - tPos.z;
             const d = Math.sqrt(dx * dx + dz * dz) || 1;
-            // Backpedal vector
             hunter.applyImpulse({ x: (dx / d) * 0.12, y: 0, z: (dz / d) * 0.12 });
             hunter.lookAt(target.location);
         } catch (_) { }
@@ -217,15 +210,12 @@ export class CombatSystem {
             const hPos = hunter.location;
             const tPos = target.location;
 
-            // Gather velocities for predictive shooting
             let tVel = { x: 0, y: 0, z: 0 };
             try { tVel = target.getVelocity(); } catch (_) { }
 
-            // Travel speed of arrow (approx 2 blocks per tick)
             const arrowSpeed = 1.8;
             const travelTicks = distance / arrowSpeed;
 
-            // Predicted intercept coordinate
             const predPos = {
                 x: tPos.x + tVel.x * travelTicks,
                 y: tPos.y + tVel.y * travelTicks + 0.5,
@@ -242,16 +232,14 @@ export class CombatSystem {
             const dz = predPos.z - spawnPos.z;
             const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
 
-            // Apply direction vector with gravity correction
             const arrowImpulse = 1.8;
             arrow.clearVelocity();
             arrow.applyImpulse({
                 x: (dx / d) * arrowImpulse,
-                y: (dy / d) * arrowImpulse + 0.18, // Slight upward arc
+                y: (dy / d) * arrowImpulse + 0.18,
                 z: (dz / d) * arrowImpulse
             });
 
-            // Play fire sounds and particles
             dim.playSound("random.bow", spawnPos, { volume: 0.8, pitch: 1.0 });
             dim.spawnParticle("minecraft:crit_smoke_particle", spawnPos);
 
@@ -262,13 +250,11 @@ export class CombatSystem {
         const dim = hunter.dimension;
         const tPos = target.location;
 
-        // Flint & Steel / Fire placing in runner path
         if (inventory.hasItem("minecraft:flint_and_steel") && distance <= 5.0) {
             try {
                 let tVel = { x: 0, y: 0, z: 0 };
                 try { tVel = target.getVelocity(); } catch (_) { }
                 
-                // Project 2 blocks ahead of player heading
                 const firePos = {
                     x: Math.floor(tPos.x + tVel.x * 4),
                     y: Math.floor(tPos.y),
@@ -287,7 +273,6 @@ export class CombatSystem {
             } catch (_) { }
         }
 
-        // Cobwebs in runner path
         if (inventory.hasItem("minecraft:web") && distance <= 6.0) {
             try {
                 let tVel = { x: 0, y: 0, z: 0 };

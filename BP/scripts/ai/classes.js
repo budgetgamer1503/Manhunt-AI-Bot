@@ -17,7 +17,7 @@ export const HUNTER_CLASSES = {
         id: "knight",
         name: "Knight (Melee Tank)",
         kit: "knight_starter",
-        speedModifier: -0.02, // Slightly slower due to heavy armor weight
+        speedModifier: -0.02,
         modifyProfile(baseProfile) {
             return {
                 ...baseProfile,
@@ -34,7 +34,7 @@ export const HUNTER_CLASSES = {
         id: "archer",
         name: "Archer (Ranged Support)",
         kit: "archer_starter",
-        speedModifier: 0.05, // Scurries faster to keep distance
+        speedModifier: 0.05,
         modifyProfile(baseProfile) {
             return {
                 ...baseProfile,

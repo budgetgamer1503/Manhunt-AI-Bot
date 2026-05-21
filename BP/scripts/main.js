@@ -675,34 +675,49 @@ world.afterEvents.playerDimensionChange.subscribe((event) => {
     debug(MODULE, `Target changed dimension: ${event.fromDimension.id} -> ${event.toDimension.id}`);
 
     system.runTimeout(() => {
-        const hunter = getHunter();
-        if (!hunter || !isActive()) return;
+        const hunters = getHunters();
+        if (hunters.length === 0 || !isActive()) return;
 
         try {
             const toDimension = event.toDimension;
             const tPos = player.location;
+            let teleportedCount = 0;
 
-            let spawnY = tPos.y;
-            for (let y = Math.floor(tPos.y) + 10; y >= Math.max(tPos.y - 20, -64); y--) {
-                const block = toDimension.getBlock({ x: Math.floor(tPos.x), y, z: Math.floor(tPos.z) });
-                if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
-                    spawnY = y + 1;
-                    break;
-                }
+            hunters.forEach((h, i) => {
+                if (!h.entity) return;
+                try {
+                    const _ = h.entity.location;
+
+                    let spawnY = tPos.y;
+                    const angle = (Math.random() * Math.PI * 2) + (i * (Math.PI * 2 / hunters.length));
+                    const dist = 8 + Math.random() * 5;
+                    const newX = tPos.x + Math.cos(angle) * dist;
+                    const newZ = tPos.z + Math.sin(angle) * dist;
+
+                    try {
+                        for (let y = Math.floor(tPos.y) + 10; y >= Math.max(tPos.y - 20, -64); y--) {
+                            const block = toDimension.getBlock({ x: Math.floor(newX), y, z: Math.floor(newZ) });
+                            if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
+                                spawnY = y + 1;
+                                break;
+                            }
+                        }
+                    } catch (_) {
+                        spawnY = tPos.y;
+                    }
+
+                    h.entity.teleport(
+                        { x: newX, y: spawnY, z: newZ },
+                        { dimension: toDimension }
+                    );
+                    teleportedCount++;
+                } catch (_) {}
+            });
+
+            if (teleportedCount > 0) {
+                debug(MODULE, `${teleportedCount} hunters followed target to ${toDimension.id}`);
+                target.sendMessage(teleportedCount === 1 ? "§cThe hunter followed you through the portal!" : "§cThe hunters followed you through the portal!");
             }
-
-            const angle = Math.random() * Math.PI * 2;
-            const dist = 8 + Math.random() * 5;
-            const newX = tPos.x + Math.cos(angle) * dist;
-            const newZ = tPos.z + Math.sin(angle) * dist;
-
-            hunter.teleport(
-                { x: newX, y: spawnY, z: newZ },
-                { dimension: toDimension }
-            );
-
-            debug(MODULE, `Hunter followed target to ${toDimension.id}`);
-            target.sendMessage("§cThe hunter followed you through the portal!");
         } catch (e) {
             error(MODULE, "Failed to follow target through portal", e);
         }

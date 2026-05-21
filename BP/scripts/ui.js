@@ -15,7 +15,7 @@ import { INVENTORY_MODES, describeInventoryMode, capturePlayerInventoryProfile }
 import { getCreatorKitChoices, DEFAULT_CREATOR_KIT_ID } from "./kits.js";
 import { WIN_CONDITIONS, getHuntState, getRemainingTimeMinutes, getRemainingLives, getRemainingKills } from "./win_conditions.js";
 import { getScalingDescription } from "./difficulty_scaling.js";
-import serverForm from "../../RP/ui/server_form.json";
+import { serverForm } from "./serverForm.js";
 import { ACHIEVEMENTS, getUnlockedAchievements } from "./achievements.js";
 const CONFIG_PROP = "manhunt:last_config";
 const SKIN_OPTIONS = [
@@ -182,9 +182,17 @@ export function showSpawnMenu(player, handlers, hunterActive = false) {
     addMenuButton(form, actions, `§lInventory Mode: ${describeInventoryMode(config.inventoryMode)}\n§r§7Set item source for hunter`, () => {
         showInventoryModeSelector(player, handlers, hunterActive);
     });
-    addMenuButton(form, actions, `§lWin Condition: ${describeWinCondition(config.winCondition)}\n§r§7Set how the hunt ends`, () => {
-        showWinConditionSelector(player, handlers, hunterActive);
-    });
+    addMenuButton(
+        form, actions,
+        `§lWin Condition: ${describeWinCondition(config.winCondition)}${
+            config.winCondition === "limited_lives" ? ` (${config.maxLives} Lives)` :
+            config.winCondition === "time_limit" ? ` (${config.timeLimitMinutes} min)` :
+            config.winCondition === "kill_count" ? ` (${config.killTarget} Kills)` : ""
+        }\n§r§7Set how the hunt ends`,
+        () => {
+            showWinConditionSelector(player, handlers, hunterActive);
+        }
+    );
     addMenuButton(
         form, actions,
         config.difficultyScaling
@@ -272,7 +280,11 @@ function buildSpawnMenuBody(config, hunterActive) {
         `§fComposition:`,
         compList,
         "",
-        `§fWin Condition: §6${describeWinCondition(config.winCondition)}`,
+        `§fWin Condition: §6${describeWinCondition(config.winCondition)}${
+            config.winCondition === "limited_lives" ? ` (${config.maxLives} Lives)` :
+            config.winCondition === "time_limit" ? ` (${config.timeLimitMinutes} min)` :
+            config.winCondition === "kill_count" ? ` (${config.killTarget} Kills)` : ""
+        }`,
         `§fDifficulty Scaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
         `§fEquipment Persistence: ${config.equipmentPersistence ? "§aKeep" : "§cDrop"}`,
         "",
@@ -410,6 +422,61 @@ function showAILevelSelector(player, handlers, hunterActive) {
         showSpawnMenu(player, handlers, hunterActive);
     });
 }
+function showWinConditionConfigurator(player, conditionId, handlers, hunterActive) {
+    const config = getConfig(player.id);
+    
+    system.run(() => {
+        const form = new ModalFormData();
+        
+        if (conditionId === "limited_lives") {
+            form.title("§lCONFIG: LIMITED LIVES")
+                .slider("Max Squad Lives", 1, 20, 1, config.maxLives || 3);
+        } else if (conditionId === "time_limit") {
+            form.title("§lCONFIG: SURVIVAL TIME")
+                .slider("Time Limit (Minutes)", 5, 120, 5, config.timeLimitMinutes || 30);
+        } else if (conditionId === "kill_count") {
+            form.title("§lCONFIG: TARGET KILLS")
+                .slider("Target Hunter Kills", 1, 20, 1, config.killTarget || 3);
+        } else {
+            config.winCondition = "infinite";
+            player.onScreenDisplay.setActionBar("§aWin condition set to §6Infinite Respawns");
+            showSpawnMenu(player, handlers, hunterActive);
+            return;
+        }
+        
+        form.show(player).then((res) => {
+            if (res.canceled || res.cancelationReason === "UserBusy") {
+                if (res.cancelationReason === "UserBusy") {
+                    system.runTimeout(() => {
+                        showWinConditionConfigurator(player, conditionId, handlers, hunterActive);
+                    }, 20);
+                    return;
+                }
+                showWinConditionSelector(player, handlers, hunterActive);
+                return;
+            }
+            
+            const formValues = res.formValues || [];
+            config.winCondition = conditionId;
+            
+            if (conditionId === "limited_lives") {
+                config.maxLives = Math.floor(formValues[0] ?? 3);
+                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Limited Lives (${config.maxLives})`);
+            } else if (conditionId === "time_limit") {
+                config.timeLimitMinutes = Math.floor(formValues[0] ?? 30);
+                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Time Limit (${config.timeLimitMinutes} min)`);
+            } else if (conditionId === "kill_count") {
+                config.killTarget = Math.floor(formValues[0] ?? 3);
+                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Kill Target (${config.killTarget} kills)`);
+            }
+            
+            showSpawnMenu(player, handlers, hunterActive);
+        }).catch(() => {
+            showWinConditionSelector(player, handlers, hunterActive);
+        });
+    });
+}
+
 function showWinConditionSelector(player, handlers, hunterActive) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
@@ -419,9 +486,13 @@ function showWinConditionSelector(player, handlers, hunterActive) {
     for (const condition of WIN_CONDITIONS) {
         const selected = condition.id === config.winCondition ? " §a[Selected]" : "";
         addMenuButton(form, actions, `§l${condition.name}${selected}\n§r§7${condition.description}`, () => {
-            config.winCondition = condition.id;
-            player.onScreenDisplay.setActionBar(`§aWin condition set to §6${condition.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
+            if (condition.id === "infinite") {
+                config.winCondition = "infinite";
+                player.onScreenDisplay.setActionBar("§aWin condition set to §6Infinite Respawns");
+                showSpawnMenu(player, handlers, hunterActive);
+            } else {
+                showWinConditionConfigurator(player, condition.id, handlers, hunterActive);
+            }
         });
     }
     addMenuButton(form, actions, "§l§7Back", () => {

@@ -120,4 +120,4 @@ Add your own hunter skins by placing PNG files in `RP/textures/entity/hunter/` a
 
 ---
 
-_"I can hear your heartbeat…" — The Hunter Squad_
+_"I can hear your heartbeat…" ——— The Hunter Squad_

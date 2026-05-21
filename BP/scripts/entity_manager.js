@@ -52,48 +52,43 @@ let respawnContext = null;
 const RESPAWN_MAX_RETRIES = 3;
 
 export function getHunter() {
-    if (activeHunters.length > 0) {
-        activeHunters = activeHunters.filter(h => {
-            try { const _ = h.entity.location; return true; }
-            catch (_) { return false; }
-        });
-        if (activeHunters.length > 0) return activeHunters[0].entity;
-    }
-    for (const dimId of ["overworld", "nether", "the_end"]) {
+    for (const h of activeHunters) {
         try {
-            const dim = world.getDimension(dimId);
-            const hunters = dim.getEntities({ type: HUNTER_TYPE, tags: [HUNTER_TAG] });
-            for (const h of hunters) {
-                try {
-                    const _ = h.location;
-                    const inv = new HunterInventory();
-                    activeHunters.push({
-                        entity: h,
-                        inventory: inv,
-                        classId: "default",
-                        name: h.nameTag || "Hunter",
-                        skinId: 0,
-                        aiLevel: hunterAILevel,
-                        enableTaunts: hunterEnableTaunts,
-                        boatHandling: hunterBoatHandling,
-                        deathCount: 0,
-                        lives: hunterMaxLives
-                    });
-                    return h;
-                } catch (_) { }
-            }
-        } catch (_) { }
+            const _ = h.entity.location;
+            return h.entity;
+        } catch (_) {}
+    }
+    if (activeHunters.length === 0) {
+        for (const dimId of ["overworld", "nether", "the_end"]) {
+            try {
+                const dim = world.getDimension(dimId);
+                const hunters = dim.getEntities({ type: HUNTER_TYPE, tags: [HUNTER_TAG] });
+                for (const h of hunters) {
+                    try {
+                        const _ = h.location;
+                        const inv = new HunterInventory();
+                        activeHunters.push({
+                            entity: h,
+                            inventory: inv,
+                            classId: "default",
+                            name: h.nameTag || "Hunter",
+                            skinId: 0,
+                            aiLevel: hunterAILevel,
+                            enableTaunts: hunterEnableTaunts,
+                            boatHandling: hunterBoatHandling,
+                            deathCount: 0,
+                            lives: hunterMaxLives
+                        });
+                        return h;
+                    } catch (_) { }
+                }
+            } catch (_) { }
+        }
     }
     return null;
 }
 
 export function getHunters() {
-    if (activeHunters.length > 0) {
-        activeHunters = activeHunters.filter(h => {
-            try { const _ = h.entity.location; return true; }
-            catch (_) { return false; }
-        });
-    }
     return activeHunters;
 }
 
@@ -136,7 +131,7 @@ export function getInventoryForHunter(entity) {
     const h = getHunters().find(h => h.entity.id === entity.id);
     return h ? h.inventory : null;
 }
-export function isActive() { return getHunter() !== null; }
+export function isActive() { return activeHunters.length > 0; }
 export function isRespawning() { return respawnInProgress; }
 export function getDeathCount() { return hunterDeathCount; }
 export function getHunterNameStr() { return hunterName; }

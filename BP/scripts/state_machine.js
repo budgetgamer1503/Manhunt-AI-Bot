@@ -18,12 +18,40 @@ function startTickingLoop() {
     centralTickId = system.runInterval(() => {
         try {
             const hunters = getHunters();
+            const target = getTarget();
             hunters.forEach((h, i) => {
                 if (h.entity) {
-                    // Stagger ticking round-robin style (ticks every 2 ticks per brain)
-                    if ((system.currentTick + i) % 2 === 0) {
-                        const brain = brains.get(h.entity.id);
-                        if (brain) {
+                    const brain = brains.get(h.entity.id);
+                    if (brain) {
+                        let tickInterval = 4;
+                        
+                        if (target) {
+                            try {
+                                if (h.entity.dimension.id === target.dimension.id) {
+                                    const hLoc = h.entity.location;
+                                    const tLoc = target.location;
+                                    const dx = tLoc.x - hLoc.x;
+                                    const dy = tLoc.y - hLoc.y;
+                                    const dz = tLoc.z - hLoc.z;
+                                    const distSq = dx * dx + dy * dy + dz * dz;
+
+                                    if (distSq > 96 * 96) {
+                                        tickInterval = 40; // Extremely far: tick once every 2 seconds
+                                    } else if (distSq > 48 * 48) {
+                                        tickInterval = 20; // Far: tick once every 1 second
+                                    } else if (distSq > 24 * 24) {
+                                        tickInterval = 10; // Medium-far: tick once every 0.5 seconds
+                                    } else if (distSq > 12 * 12) {
+                                        tickInterval = 6;  // Medium-close: tick once every 0.3 seconds
+                                    }
+                                } else {
+                                    tickInterval = 40; // Different dimension: tick rarely (every 2 seconds)
+                                }
+                            } catch (_) {}
+                        }
+
+                        const offset = i * 2;
+                        if ((system.currentTick + offset) % tickInterval === 0) {
                             try { brain._tick(); } catch (_) {}
                         }
                     }
@@ -62,7 +90,6 @@ export function startAI() {
             brain = new AIBrain();
             brains.set(h.entity.id, brain);
         } else if (brain.state !== "idle") {
-            // Refresh references without wiping brain state
             brain.hunter = h.entity;
             brain.target = target;
             brain.inventory = h.inventory;
@@ -76,7 +103,7 @@ export function startAI() {
             h.enableTaunts !== undefined ? h.enableTaunts : getEnableTaunts(),
             h.boatHandling || getBoatHandling(),
             h.classId || "default",
-            true // tickExternally = true
+            true
         );
     }
     startTickingLoop();
@@ -88,6 +115,18 @@ export function stopAI() {
         try { brain.stop(); } catch (_) {}
     }
     brains.clear();
+}
+
+export function stopHunterAI(hunter) {
+    if (!hunter) return;
+    const brain = brains.get(hunter.id);
+    if (brain) {
+        try { brain.stop(); } catch (_) {}
+        brains.delete(hunter.id);
+    }
+    if (brains.size === 0) {
+        stopTickingLoop();
+    }
 }
 
 export function forceChaseMode() {

@@ -80,14 +80,11 @@ export class SurvivalSystem {
 
         if (!h || !inv) return null;
 
-        // Nether: Equip gold armor if available and not wearing any gold armor
         this._checkNetherGoldArmor(h, inv);
 
-        // End: Avoid Endermen aggro / handle Endermen
         const enderAction = this._checkEndermanThreat(h, inv);
         if (enderAction) return enderAction;
 
-        // Hazards: sweet berry bushes, magma, powder snow
         const hazardAction = this._checkHazards(h, inv);
         if (hazardAction) return hazardAction;
 
@@ -143,7 +140,6 @@ export class SurvivalSystem {
             const feetBlock = dim.getBlock({ x: fx, y: fy, z: fz });
             const belowBlock = dim.getBlock({ x: fx, y: fy - 1, z: fz });
             
-            // Sweet berry bushes avoidance
             if (feetBlock?.typeId === "minecraft:sweet_berry_bush" || belowBlock?.typeId === "minecraft:sweet_berry_bush") {
                 return {
                     type: "impulse",
@@ -153,7 +149,6 @@ export class SurvivalSystem {
                 };
             }
             
-            // Powder snow avoidance
             if (feetBlock?.typeId === "minecraft:powder_snow" || belowBlock?.typeId === "minecraft:powder_snow") {
                 if (!this._hasLeatherBoots(hunter)) {
                     if (inventory.hasWaterBucket()) {
@@ -167,7 +162,6 @@ export class SurvivalSystem {
                 }
             }
             
-            // Magma block avoidance
             if (belowBlock?.typeId === "minecraft:magma") {
                 if (!this._hasFireResistance(hunter)) {
                     const block = inventory.getBridgeBlock();
