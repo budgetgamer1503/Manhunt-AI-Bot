@@ -31,4 +31,5 @@
 - **Squad Respawn Reliability** — Preserves squad members' configuration profiles, death counts, and lives across deaths by maintaining persistent squad slot metadata
 - **Ender Pearl Catchup FX** — Visual Ender Pearl throwing effects, sound cues, and portal particle streams replacing flat teleports for immersive catchups
 
-**Requires Minecraft Bedrock 1.26.10+ (Scripting API Enabled)**
+**Requires Minecraft Bedrock 1.26.10+ (Scripting API not required)**
+

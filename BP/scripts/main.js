@@ -24,6 +24,12 @@ import { resetHuntProgress, recordHunterDamageTaken, checkEndOfHuntAchievements 
 import { info, debug, error } from "./logger.js";
 
 const MODULE = "main";
+const CLASS_COLORS = {
+    default: "§a",
+    knight: "§6",
+    archer: "§b",
+    saboteur: "§d"
+};
 let spawnSequenceActive = false;
 let bedScanId = null;
 let bedScanCounter = 0;
@@ -192,8 +198,9 @@ function showHuntBegins(player, name) {
 }
 
 system.runInterval(() => {
+    if (!isActive()) return;
     cachePosition();
-}, 5);
+}, 10);
 
 world.afterEvents.entityDie.subscribe((event) => {
     const entity = event.deadEntity;
@@ -461,13 +468,16 @@ function startBedScanning() {
 
         try {
             const dimId = scanDim.id.replace("minecraft:", "");
+            const baseX = Math.floor(scanPos.x);
+            const baseY = Math.floor(scanPos.y);
+            const baseZ = Math.floor(scanPos.z);
             for (let x = -3; x <= 3; x++) {
                 for (let y = -1; y <= 2; y++) {
                     for (let z = -3; z <= 3; z++) {
                         const blockPos = {
-                            x: Math.floor(scanPos.x) + x,
-                            y: Math.floor(scanPos.y) + y,
-                            z: Math.floor(scanPos.z) + z
+                            x: baseX + x,
+                            y: baseY + y,
+                            z: baseZ + z
                         };
 
                         try {
@@ -513,22 +523,16 @@ function startCompassTracking() {
                     const trackingStrings = [];
 
                     hunters.forEach((h, i) => {
-                        if (!h.entity) return;
+                        if (!h.entity?.isValid?.()) return;
                         try {
                             const hPos = h.entity.location;
                             const dx = hPos.x - tPos.x;
                             const dz = hPos.z - tPos.z;
-                            const dist = Math.sqrt(dx * dx + dz * dz);
+                            const distSq = dx * dx + dz * dz;
+                            const dist = Math.sqrt(distSq);
                             const arrow = getDirectionArrow(tPos, hPos);
-                            
-                            const classColors = {
-                                "default": "§a",
-                                "knight": "§6",
-                                "archer": "§b",
-                                "saboteur": "§d"
-                            };
-                            const classColor = classColors[h.classId] ?? "§7";
-                            const distColor = dist < 30 ? "§c" : dist < 80 ? "§e" : "§a";
+                            const classColor = CLASS_COLORS[h.classId] ?? "§7";
+                            const distColor = distSq < 900 ? "§c" : distSq < 6400 ? "§e" : "§a";
                             
                             const shortClass = h.classId ? h.classId[0].toUpperCase() : "H";
                             trackingStrings.push(`${classColor}${shortClass}-${h.name}: ${distColor}${Math.floor(dist)}m ${arrow}`);

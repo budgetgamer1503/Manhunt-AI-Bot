@@ -236,6 +236,14 @@ const BONUS_UTILITY_ITEMS = [
     "minecraft:jungle_log", "minecraft:acacia_log", "minecraft:dark_oak_log",
     "minecraft:mangrove_log", "minecraft:cherry_log"
 ];
+const BRIDGE_BLOCK_PRIORITY = [
+    "minecraft:cobblestone", "minecraft:dirt", "minecraft:oak_planks",
+    "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack",
+    "minecraft:gravel", "minecraft:sand"
+];
+const LAVA_SAFE_BLOCK_PRIORITY = [
+    "minecraft:cobblestone", "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack", "minecraft:dirt"
+];
 export const INVENTORY_MODES = [
     { id: "starter", name: "Starter", description: "Spawn with the default hunter starter kit." },
     { id: "player_share", name: "Player Share", description: "Mirror a filtered version of the player's inventory and equipment." },
@@ -446,6 +454,7 @@ export function buildInventoryModeItemMap(config = {}, profile = null) {
 export class HunterInventory {
     constructor() {
         this.slots = new Array(27).fill(null);
+        this.itemCounts = Object.create(null);
         this._tempEquipActive = false;
         this._tempEquipEndTick = 0;
         this.modeState = {
@@ -455,20 +464,41 @@ export class HunterInventory {
             prepBehavior: "hybrid"
         };
     }
+    _rebuildItemCounts() {
+        this.itemCounts = Object.create(null);
+        for (const slot of this.slots) {
+            if (slot && slot.amount > 0) {
+                this.itemCounts[slot.typeId] = (this.itemCounts[slot.typeId] ?? 0) + slot.amount;
+            }
+        }
+    }
+    _addCount(typeId, amount) {
+        if (!typeId || amount <= 0) return;
+        this.itemCounts[typeId] = (this.itemCounts[typeId] ?? 0) + amount;
+    }
+    _removeCount(typeId, amount) {
+        if (!typeId || amount <= 0) return;
+        const next = (this.itemCounts[typeId] ?? 0) - amount;
+        if (next > 0) this.itemCounts[typeId] = next;
+        else delete this.itemCounts[typeId];
+    }
     clear() {
         this.slots.fill(null);
+        this.itemCounts = Object.create(null);
         this.resetTempEquip();
     }
     addItem(typeId, amount = 1) {
         for (let i = 0; i < this.slots.length; i++) {
             if (this.slots[i] && this.slots[i].typeId === typeId) {
                 this.slots[i].amount += amount;
+                this._addCount(typeId, amount);
                 return true;
             }
         }
         for (let i = 0; i < this.slots.length; i++) {
             if (!this.slots[i]) {
                 this.slots[i] = { typeId, amount };
+                this._addCount(typeId, amount);
                 return true;
             }
         }
@@ -477,7 +507,9 @@ export class HunterInventory {
     removeItem(typeId, amount = 1) {
         for (let i = 0; i < this.slots.length; i++) {
             if (this.slots[i] && this.slots[i].typeId === typeId) {
+                const removed = Math.min(amount, this.slots[i].amount);
                 this.slots[i].amount -= amount;
+                this._removeCount(typeId, removed);
                 if (this.slots[i].amount <= 0) {
                     this.slots[i] = null;
                 }
@@ -487,21 +519,10 @@ export class HunterInventory {
         return false;
     }
     hasItem(typeId, amount = 1) {
-        for (const slot of this.slots) {
-            if (slot && slot.typeId === typeId && slot.amount >= amount) {
-                return true;
-            }
-        }
-        return false;
+        return (this.itemCounts[typeId] ?? 0) >= amount;
     }
     countItem(typeId) {
-        let total = 0;
-        for (const slot of this.slots) {
-            if (slot && slot.typeId === typeId) {
-                total += slot.amount;
-            }
-        }
-        return total;
+        return this.itemCounts[typeId] ?? 0;
     }
     ensureAtLeast(typeId, amount = 1) {
         const current = this.countItem(typeId);
@@ -547,19 +568,13 @@ export class HunterInventory {
         return FOOD_VALUES[typeId]?.hunger ?? 0;
     }
     getBridgeBlock() {
-        const preferred = [
-            "minecraft:cobblestone", "minecraft:dirt", "minecraft:oak_planks",
-            "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack",
-            "minecraft:gravel", "minecraft:sand"
-        ];
-        for (const b of preferred) {
+        for (const b of BRIDGE_BLOCK_PRIORITY) {
             if (this.hasItem(b)) return b;
         }
         return null;
     }
     getLavaSafeBlock() {
-        const safe = ["minecraft:cobblestone", "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack", "minecraft:dirt"];
-        for (const b of safe) {
+        for (const b of LAVA_SAFE_BLOCK_PRIORITY) {
             if (this.hasItem(b)) return b;
         }
         return this.getBridgeBlock();
@@ -596,6 +611,7 @@ export class HunterInventory {
     clone() {
         const copy = new HunterInventory();
         copy.slots = this.slots.map((slot) => slot ? { ...slot } : null);
+        copy._rebuildItemCounts();
         copy._tempEquipActive = false;
         copy._tempEquipEndTick = 0;
         copy.modeState = { ...this.modeState };
@@ -611,6 +627,7 @@ export class HunterInventory {
         const inventory = new HunterInventory();
         if (snapshot?.slots?.length) {
             inventory.slots = snapshot.slots.map((slot) => slot ? { ...slot } : null);
+            inventory._rebuildItemCounts();
         }
         inventory._tempEquipActive = false;
         inventory._tempEquipEndTick = 0;

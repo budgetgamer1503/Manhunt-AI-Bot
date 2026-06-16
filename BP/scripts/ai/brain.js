@@ -18,6 +18,7 @@ import {
 } from "../movement.js";
 
 const TICK_RATE = 2;
+const BOAT_SCAN_INTERVAL = 20;
 
 export class AIBrain {
     constructor() {
@@ -45,6 +46,7 @@ export class AIBrain {
         this.mlgWaterBlocks = [];
 
         this._intervalId = null;
+        this._lastBoatScanTick = 0;
     }
 
     get profile() {
@@ -68,6 +70,7 @@ export class AIBrain {
         this.stuckTicks = 0;
         this.tempWaterBlocks = [];
         this.mlgWaterBlocks = [];
+        this._lastBoatScanTick = 0;
 
         this.cooldowns.resetAll();
         this.combat.reset();
@@ -330,6 +333,8 @@ export class AIBrain {
 
     _handleNearbyBoats() {
         if (this.boatHandling === "ignore") return;
+        if (system.currentTick - this._lastBoatScanTick < BOAT_SCAN_INTERVAL) return;
+        this._lastBoatScanTick = system.currentTick;
         try {
             const dim = this.hunter.dimension;
             const pos = this.hunter.location;
