@@ -1,4 +1,4 @@
-# Manhunt Bot v0.8.0 — The Squads & Ranged Combat Update
+# Manhunt Bot v1.0.0 — The Squads & Ranged Combat Update
 
 ## 🎯 The Ultimate Survival Challenge
 
@@ -13,7 +13,7 @@ Experience the thrill of being hunted in your own Minecraft world! **Manhunt Bot
 5. **Survive** — The hunter squad tracks you across dimensions, builds bridges, shoots predictive arrows, throws potions, MLGs water, and cooperates to hunt you down
 6. **Win or Lose** — Defeat the entire squad permanently, survive the time limit, or get hunted down
 
-## ⚡ v0.8.0 Features ("Squads & Ranged Combat")
+## ⚡ v1.0.0 Features ("Squads & Ranged Combat")
 
 ### 👥 Hunter Squads & Lobby UI
 - **Solo to Quad Support** — Spawn and fight up to 4 parallel hunters concurrently, each operating on an independent staggered brain loop.
@@ -78,7 +78,7 @@ Add your own hunter skins by placing PNG files in `RP/textures/entity/hunter/` a
 
 ## 📊 Why Manhunt Bot?
 
-| Feature | Manhunt Bot v0.8.0 | Other AI Addons |
+| Feature | Manhunt Bot v1.0.0 | Other AI Addons |
 |:---|:---:|:---|
 | **Multi-Hunter Support** | Up to 4 Squad members with dynamic presets | Solo Only |
 | **Hunter Classes** | Knight, Archer, Saboteur unique tactics | None |
@@ -103,7 +103,7 @@ Add your own hunter skins by placing PNG files in `RP/textures/entity/hunter/` a
 ## 📜 Credits
 
 **Developer:** BUDGETGAMER1503  
-**Version:** 0.8.0  
+**Version:** 1.0.0  
 **Tested On:** Minecraft Bedrock 1.26.20  
 
 ### Support & Feedback

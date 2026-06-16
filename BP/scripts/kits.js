@@ -201,6 +201,7 @@ export const CREATOR_KITS = [
             "minecraft:stone_pickaxe": 1,
             "minecraft:flint_and_steel": 1,
             "minecraft:web": 16,
+            "minecraft:splash_potion": 4,
             "minecraft:chainmail_helmet": 1,
             "minecraft:chainmail_chestplate": 1,
             "minecraft:leather_boots": 1,
@@ -210,12 +211,14 @@ export const CREATOR_KITS = [
         activation: {
             anyOf: [
                 "minecraft:flint_and_steel",
-                "minecraft:web"
+                "minecraft:web",
+                "minecraft:splash_potion"
             ]
         },
         scoreItems: [
             "minecraft:flint_and_steel",
-            "minecraft:web"
+            "minecraft:web",
+            "minecraft:splash_potion"
         ]
     }
 ];

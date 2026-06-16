@@ -6,7 +6,7 @@
         ]
     },
     "header": {
-        "name": "Manhunt Bot-v0.8.0 [BP]",
+        "name": "Manhunt Bot-v1.0.0 [BP]",
         "description": "Spawns an AI-controlled hunter that tracks and chases you like a real manhunt.",
         "min_engine_version": [
             1,
@@ -15,8 +15,8 @@
         ],
         "uuid": "7a0ad8cf-0736-40f8-973d-b1117fbceef8",
         "version": [
+            1,
             0,
-            8,
             0
         ]
     },
@@ -25,8 +25,8 @@
             "type": "data",
             "uuid": "afead9fc-d571-4bc7-bc24-9fb63913020d",
             "version": [
+                1,
                 0,
-                8,
                 0
             ]
         },
@@ -54,8 +54,8 @@
         {
             "uuid": "896241cc-15a9-41ce-9f88-2c567caa9a21",
             "version": [
+                1,
                 0,
-                8,
                 0
             ]
         }

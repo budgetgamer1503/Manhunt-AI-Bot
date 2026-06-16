@@ -148,7 +148,7 @@ export function describePrepBehavior(behaviorId) {
 export function showSpawnMenu(player, handlers, hunterActive = false) {
     const config = getConfig(player.id);
     const form = new ActionFormData()
-        .title("§l§4MANHUNT BOT v0.8.0")
+        .title("§l§4MANHUNT BOT v1.0.0")
         .body(buildSpawnMenuBody(config, hunterActive));
     const actions = [];
     addMenuButton(form, actions, "§l§cStart Hunt\n§r§7Use current config and begin countdown", () => {

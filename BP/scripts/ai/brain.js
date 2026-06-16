@@ -228,8 +228,26 @@ export class AIBrain {
                     const b = dim.getBlock({ x: Math.floor(newX), y, z: Math.floor(newZ) });
                     if (b && b.typeId !== "minecraft:air" && b.typeId !== "minecraft:water") { newY = y + 1; break; }
                 }
+
+                const startLoc = { ...hPos };
+                dim.playSound("random.bow", startLoc, { volume: 0.6, pitch: 1.4 });
+                dim.playSound("teleport.recharge", startLoc, { volume: 0.8, pitch: 1.2 });
+                try { dim.spawnParticle("minecraft:portal_particle", { x: startLoc.x, y: startLoc.y + 1, z: startLoc.z }); } catch (_) {}
+
                 h.teleport({ x: newX, y: newY, z: newZ });
                 cd.set("catchup", p.cdCatchup);
+
+                const destLoc = { x: newX, y: newY, z: newZ };
+                dim.playSound("mob.endermen.portal", destLoc, { volume: 1.0, pitch: 1.0 });
+                try {
+                    for (let pIter = 0; pIter < 8; pIter++) {
+                        dim.spawnParticle("minecraft:portal_particle", {
+                            x: destLoc.x + (Math.random() - 0.5) * 1.5,
+                            y: destLoc.y + 0.5 + Math.random() * 1.5,
+                            z: destLoc.z + (Math.random() - 0.5) * 1.5
+                        });
+                    }
+                } catch (_) {}
             } catch (_) { }
         }
 

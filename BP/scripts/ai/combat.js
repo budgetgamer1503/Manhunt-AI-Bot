@@ -295,6 +295,81 @@ export class CombatSystem {
                 }
             } catch (_) { }
         }
+
+        if (inventory.hasItem("minecraft:splash_potion") && distance <= 9.0) {
+            try {
+                let tVel = { x: 0, y: 0, z: 0 };
+                try { tVel = target.getVelocity(); } catch (_) { }
+
+                const predPos = {
+                    x: tPos.x + tVel.x * 3,
+                    y: tPos.y + tVel.y * 3 + 0.5,
+                    z: tPos.z + tVel.z * 3
+                };
+
+                const hPos = hunter.location;
+                const spawnPos = { x: hPos.x, y: hPos.y + 1.6, z: hPos.z };
+                hunter.lookAt(predPos);
+
+                inventory.showItemInHand(hunter, "minecraft:splash_potion", "throwing", 10);
+                inventory.removeItem("minecraft:splash_potion", 1);
+
+                dim.playSound("random.bow", spawnPos, { volume: 0.5, pitch: 1.5 });
+                const potion = dim.spawnEntity("minecraft:thrown_potion", spawnPos);
+                
+                const dx = predPos.x - spawnPos.x;
+                const dy = predPos.y - spawnPos.y;
+                const dz = predPos.z - spawnPos.z;
+                const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1;
+
+                potion.clearVelocity();
+                potion.applyImpulse({
+                    x: (dx / d) * 1.2,
+                    y: (dy / d) * 1.2 + 0.15,
+                    z: (dz / d) * 1.2
+                });
+
+                const targetHealth = target.getComponent("minecraft:health")?.currentValue ?? 20;
+                let effectType = "slowness";
+
+                if (targetHealth <= 8 || Math.random() < 0.5) {
+                    effectType = "instant_damage";
+                }
+
+                system.runTimeout(() => {
+                    try {
+                        const tDist = this._dist2D(potion.location, target.location);
+                        if (tDist <= 4.0) {
+                            if (effectType === "slowness") {
+                                target.runCommand("effect @s slowness 6 1 true");
+                            } else {
+                                target.runCommand("effect @s instant_damage 1 0 true");
+                            }
+                            dim.playSound("random.glass", target.location, { volume: 0.8, pitch: 1.0 });
+                            dim.spawnParticle("minecraft:crop_growth_emerald_eval", target.location);
+                        } else {
+                            dim.playSound("random.glass", potion.location, { volume: 0.8, pitch: 1.0 });
+                        }
+                    } catch (_) {
+                        try {
+                            const currentDist = this._dist2D(hunter.location, target.location);
+                            if (currentDist <= 10.0) {
+                                if (effectType === "slowness") {
+                                    target.runCommand("effect @s slowness 6 1 true");
+                                } else {
+                                    target.runCommand("effect @s instant_damage 1 0 true");
+                                }
+                                dim.playSound("random.glass", target.location, { volume: 0.8, pitch: 1.0 });
+                            }
+                        } catch (_) {}
+                    }
+                    try { potion.remove(); } catch (_) {}
+                }, 10);
+
+                cooldowns.set("place", 50);
+                return;
+            } catch (_) { }
+        }
     }
 
     _faceThreat(hunter, attacker) {

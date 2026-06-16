@@ -6,7 +6,7 @@
         ]
     },
     "header": {
-        "name": "Manhunt Bot-v0.8.0 [RP]",
+        "name": "Manhunt Bot-v1.0.0 [RP]",
         "description": "Resource pack for the Manhunt Bot addon — hunter skins, models, UI textures.",
         "min_engine_version": [
             1,
@@ -15,8 +15,8 @@
         ],
         "uuid": "c35429ad-ec45-401f-95e2-da60814ee21e",
         "version": [
+            1,
             0,
-            8,
             0
         ]
     },
@@ -25,8 +25,8 @@
             "type": "resources",
             "uuid": "896241cc-15a9-41ce-9f88-2c567caa9a21",
             "version": [
+                1,
                 0,
-                8,
                 0
             ]
         }
@@ -35,8 +35,8 @@
         {
             "uuid": "7a0ad8cf-0736-40f8-973d-b1117fbceef8",
             "version": [
+                1,
                 0,
-                8,
                 0
             ]
         }

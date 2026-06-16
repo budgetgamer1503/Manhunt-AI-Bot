@@ -38,8 +38,8 @@ system.runTimeout(() => {
 }, 40);
 
 system.run(() => {
-    info(MODULE, "Manhunt Bot v0.8.0 loaded.");
-    world.sendMessage("§eManhunt Bot v0.8.0 §7loaded. Use the §eHunter Compass §7to begin.");
+    info(MODULE, "Manhunt Bot v1.0.0 loaded.");
+    world.sendMessage("§eManhunt Bot v1.0.0 §7loaded. Use the §eHunter Compass §7to begin.");
 });
 
 world.afterEvents.itemUse.subscribe((event) => {

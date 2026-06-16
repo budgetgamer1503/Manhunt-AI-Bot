@@ -1,4 +1,4 @@
-# Manhunt Bot v0.8.0
+# Manhunt Bot v1.0.0
 
 ## What's New
 - **Hunter Squads** — Spawn and chase runner with up to 4 parallel active hunters concurrently
@@ -12,7 +12,7 @@
 - **Specialized Classes** — Modifiers for Knight (melee strafe tank), Archer (predictive archery), and Saboteur (potion tactics)
 - **Predictive Trajectory Archery** — Archers lead bow and crossbow shots by calculating runner's velocity vector and direction
 - **Tactical Backpedaling** — Archers maintain 8-15 block distance, shooting arrows, and dynamic weapon swapping to melee when runner gets too close
-- **Saboteur Trapping** — Places cobwebs and fire 2 blocks in front of running targets; throws slowness and harming splash potions
+- **Saboteur Trapping & Potions** — Places cobwebs and fire 2 blocks in front of running targets; throws slowness and harming splash potions with predictive tracking, authentic physical bottle projectiles, breaking glass sounds, and emerald particle splashes
 - **Dynamic Shield Face** — Timed parries face incoming projectile trajectories to shield against incoming threats
 
 ## Survival & Prep Mode Realism
@@ -25,9 +25,10 @@
 ## Technical
 - **Round-Robin Tick Scheduling** — Staggers brain loop cycles on alternate ticks (`(system.currentTick + index) % 2 === 0`) to preserve tick rates and ensure perfect FPS scaling
 - **Multi-Compass HUD Rotation** — HUD compass tracking automatically rotates focus to nearest hunter, reporting distance and bearings cleanly
-- **Version Unified** — Telemetry, manifests, and system logs standardized to v0.8.0
+- **Version Unified** — Telemetry, manifests, and system logs standardized to v1.0.0
 - **AI Ticking Auto-Stop** — Automatically suspends the V8 ticking interval completely when all squad members are dead/respawning to reduce idle CPU usage to 0%, and seamlessly resumes on respawn
 - **Squad Dimension Chasing** — Teleports all alive members of the squad through portals to follow the runner with staggered spawn angles and safety block checks
 - **Squad Respawn Reliability** — Preserves squad members' configuration profiles, death counts, and lives across deaths by maintaining persistent squad slot metadata
+- **Ender Pearl Catchup FX** — Visual Ender Pearl throwing effects, sound cues, and portal particle streams replacing flat teleports for immersive catchups
 
 **Requires Minecraft Bedrock 1.26.10+ (Scripting API Enabled)**
