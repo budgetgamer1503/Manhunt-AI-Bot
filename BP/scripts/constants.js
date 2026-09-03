@@ -491,139 +491,221 @@ export const TAUNTS = Object.freeze({
   ]
 });
 
-// v2.0 personality lines. The persona system picks from these contextually,
-// with per-event cooldowns so the hunter feels like a talkative player, not a
-// looping soundboard.
+// Chat lines — written like a real player: lowercase, casual, occasionally
+// with typos or filler words. More variety per event so the bot never sounds
+// like a looping soundboard.
 export const CHAT_LINES = Object.freeze({
   greet: Object.freeze([
     "glhf",
-    "run while you can",
-    "I already hear your footsteps",
-    "this will be quick"
+    "gl lol",
+    "run",
+    "already on ur trail",
+    "this wont take long",
+    "lets go",
+    "ready when u are",
+    "dont make this boring"
   ]),
   chaseClose: Object.freeze([
-    "I can hear your heartbeat",
-    "stop running, it only extends this",
-    "you left a trail a mile wide",
-    "almost got you"
+    "almost",
+    "i can hear u",
+    "stop running lol",
+    "ur so close",
+    "got ur trail",
+    "nowhere to go",
+    "i see u",
+    "come here",
+    "u cant outrun me"
   ]),
   lostTrail: Object.freeze([
-    "where did you go...",
-    "you vanished. sneaky.",
-    "the trail ends here",
-    "hiding will not save you"
+    "where'd u go",
+    "hm",
+    "...",
+    "sneaky",
+    "ok where",
+    "u vanished",
+    "lost u for a sec",
+    "hiding wont help",
+    "ill find u"
   ]),
   searching: Object.freeze([
-    "I know you are around here somewhere",
-    "checking every cave",
-    "come out come out"
+    "i know ur around here",
+    "checking caves",
+    "come out",
+    "u cant hide forever",
+    "scanning",
+    "where are u",
+    "found ur footprints",
+    "getting warmer"
   ]),
   gatheringWood: Object.freeze([
-    "gathering wood real quick",
-    "one sec, punching trees",
-    "need sticks, brb"
+    "one sec",
+    "punching trees rq",
+    "brb wood",
+    "need sticks",
+    "quick wood run",
+    "dont go far"
   ]),
   mining: Object.freeze([
-    "stripping a vein, do not wait up",
-    "deepslate takes forever",
-    "mining session in progress"
+    "mining rq",
+    "deepslate is so slow",
+    "one sec",
+    "stripping a vein",
+    "brb",
+    "getting resources",
+    "almost done"
   ]),
   gotIron: Object.freeze([
-    "iron age complete",
+    "iron get",
+    "iron gear time",
     "full iron soon",
-    "iron gear online"
+    "ok now we're talking",
+    "geared up",
+    "iron acquired"
   ]),
   gotDiamond: Object.freeze([
-    "diamonds. oh no.",
-    "DIAMONDS! hunt is back on",
-    "shiny. dangerous."
+    "DIAMONDS",
+    "oh no for u",
+    "diamonds letsgo",
+    "gg gear",
+    "diamonds :)",
+    "ur cooked now",
+    "shiny"
   ]),
   gotNetherite: Object.freeze([
-    "netherite. good luck.",
-    "ancient debris secured, gear maxed",
-    "you should start praying now"
+    "netherite. gg.",
+    "maxed out",
+    "ancient debris secured",
+    "ur actually cooked",
+    "netherite diff",
+    "gl now lol"
   ]),
   enteringNether: Object.freeze([
-    "to the nether we go",
-    "see you on the other side of the portal",
-    "following you into hell itself"
+    "following u to nether",
+    "nether time",
+    "see u in hell",
+    "portal go brr",
+    "nether run lets go",
+    "following"
   ]),
   enteringOverworld: Object.freeze([
-    "back to the overworld",
-    "home turf again"
+    "back",
+    "overworld again",
+    "home turf",
+    "back to overworld"
   ]),
   enteringEnd: Object.freeze([
-    "the End? bold move",
-    "following you through the end portal",
-    "dragon race accepted"
+    "end?? bold",
+    "following u to the end",
+    "dragon race?",
+    "end portal found",
+    "lets go end"
   ]),
   dragonRace: Object.freeze([
-    "first dragon kill wins. see you there",
-    "racing to the strongholds then",
-    "may the best player win"
+    "first kill wins",
+    "race to the dragon",
+    "may the best player win lol",
+    "dragon race accepted",
+    "lets see who gets it"
   ]),
   crystalBreak: Object.freeze([
-    "not today, crystals",
-    "denied your heal spot",
-    "crystal down"
+    "crystal down",
+    "nope",
+    "not today",
+    "denied",
+    "bye crystal"
   ]),
   hitRunner: Object.freeze([
-    "gotcha",
+    "got u",
     "tag",
-    "that one hurt, did it not?",
-    "too slow"
+    "lol",
+    "too slow",
+    "there it is",
+    "hit",
+    "ouch",
+    ":)"
   ]),
   tookDamage: Object.freeze([
-    "ow. okay. noted.",
-    "lucky shot",
-    "I felt that one"
+    "ow",
+    "ok noted",
+    "lucky",
+    "that actually hurt",
+    "nice shot",
+    "ok ok",
+    "fair"
   ]),
   killedByRunner: Object.freeze([
-    "gg. respawning though.",
-    "enjoy it while it lasts",
-    "that changes nothing about the outcome"
+    "gg respawning",
+    "enjoy it",
+    "ill be back",
+    "nice one",
+    "ok that was good",
+    "respawning lol",
+    "gg but im coming back"
   ]),
   lowHealth: Object.freeze([
-    "backing off to eat",
-    "healing break, one moment",
-    "chomping, do not follow"
+    "eating rq",
+    "backing off",
+    "healing",
+    "one sec eating",
+    "low hp brb",
+    "need food"
   ]),
   eating: Object.freeze([
-    "nom nom",
-    "food break mid-chase, classic"
+    "nom",
+    "eating",
+    "food break",
+    "one sec",
+    "chomping"
   ]),
   foundAfterSearch: Object.freeze([
-    "found you",
-    "there you are!",
-    "hello again"
+    "found u",
+    "there u are",
+    "gotcha",
+    "hello :)",
+    "hi",
+    "peek a boo"
   ]),
   trappedMe: Object.freeze([
-    "a web? seriously?",
-    "clever little box",
-    "who traps a hunter?"
+    "a trap really",
+    "ok clever",
+    "who traps a hunter lol",
+    "nice try",
+    "getting out",
+    "trapped lmao"
   ]),
   winDragon: Object.freeze([
-    "gg. dragon was mine.",
-    "race over. better luck next time.",
-    "told you the dragon was my win condition"
+    "gg dragon mine",
+    "race over",
+    "gg",
+    "told u"
   ]),
   loseDragon: Object.freeze([
-    "gg wp. you earned that one.",
-    "fair race. rematch?",
-    "next time the dragon is mine"
+    "gg wp",
+    "u earned that",
+    "fair race",
+    "rematch?",
+    "next time"
   ]),
   winKill: Object.freeze([
-    "gg. hunt complete.",
-    "nothing personal. just the job."
+    "gg",
+    "hunt complete",
+    "nothing personal",
+    "gg ez",
+    "got em"
   ]),
   loseDeath: Object.freeze([
-    "the runner survives. gg.",
-    "you outlasted the squad. well played."
+    "gg runner wins",
+    "u outlasted us",
+    "well played",
+    "gg wp",
+    "u survived gg"
   ]),
   farewell: Object.freeze([
     "gg",
     "good game",
-    "rematch whenever you want"
+    "rematch?",
+    "gg wp",
+    "fun game"
   ])
 });
 

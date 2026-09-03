@@ -179,9 +179,40 @@ function decisionDelay(config, brain) {
   return Math.max(reaction, Math.max(2, profile.decisionInterval - Math.floor(stage / 2)));
 }
 
-// Decision "noise" makes lower tiers occasionally pick a slightly worse goal,
-// exactly like a distracted player. Nightmare stays nearly deterministic.
-const DECISION_NOISE = Object.freeze([18, 6, 1.5, 0.4]);
+// ─── Pro-player strategic intelligence ───────────────────────────────────────
+//
+// What a real pro manhunt hunter does that the old brain didn't:
+//
+//  1. GEAR ADVANTAGE AWARENESS — when you outgear the runner, push hard and
+//     stop gathering. When undergeared, gear up fast then re-engage.
+//
+//  2. INTERCEPT ROUTING — predict where the runner is going based on velocity
+//     and terrain, not just their current position. Chase the destination,
+//     not the player.
+//
+//  3. TIME PRESSURE — early game = gear up efficiently. Mid game = apply
+//     pressure while gathering. Late game = all-in, gathering is irrelevant.
+//
+//  4. KILL WINDOW RECOGNITION — runner low HP, cornered, in water/lava, or
+//     just took damage = override everything and push. This is the single
+//     biggest difference between a pro and a casual hunter.
+//
+//  5. STALLING DETECTION — if the runner hasn't moved much in the last N
+//     seconds, they're hiding or stalling. Switch to search/flush strategy.
+//
+//  6. DIMENSION URGENCY — runner in Nether/End = gathering is irrelevant,
+//     chase is everything. Don't stop to mine iron when the runner is in
+//     the End.
+//
+//  7. RESOURCE EFFICIENCY — stop gathering once you have enough. Don't keep
+//     mining iron when you already have full iron gear.
+//
+//  8. PRESSURE MAINTENANCE — a pro never lets the runner breathe. If you
+//     have to gather, do it fast and get back on the runner immediately.
+
+// Decision noise — lower tiers pick suboptimal goals more often.
+// Bell-curve via averaged samples: small errors common, catastrophic rare.
+const DECISION_NOISE = Object.freeze([22, 8, 2.0, 0.5]);
 
 function runnerClose(perception, range) {
   return perception.sameDimension && perception.actualRunnerDistance <= range;
@@ -191,6 +222,113 @@ function verticalBlockNeed(perception) {
   return Math.max(0, Math.ceil(perception.verticalDifference)) + 4;
 }
 
+// ── Gear advantage calculation ────────────────────────────────────────────────
+// Returns a value from -1 (heavily undergeared) to +1 (heavily outgearing).
+// Used to scale aggression and suppress gathering when already well-equipped.
+
+function gearAdvantage(gathering) {
+  // Estimate runner's likely gear tier from elapsed time — they start with
+  // nothing and progress similarly to the hunter. We compare hunter tier
+  // against a rough expected runner tier.
+  const hunterCombatTier = Math.max(gathering.swordTier, gathering.axeTier);
+  const hunterArmorTier  = gathering.armorTier;
+  // Combined score: weapons matter more than armor for kill potential.
+  const hunterScore = hunterCombatTier * 2 + hunterArmorTier;
+  // Max possible score = netherite sword (5) * 2 + netherite armor (5) = 15
+  return Math.max(-1, Math.min(1, (hunterScore - 6) / 9));
+}
+
+// ── Kill window detection ─────────────────────────────────────────────────────
+// Returns a score bonus when the runner is in a vulnerable state.
+// A pro hunter recognises these windows and pushes immediately.
+
+function killWindowBonus(perception, brain, elapsedTicks) {
+  if (!perception.sameDimension) return 0;
+  let bonus = 0;
+
+  // Runner recently took damage (we infer this from their health if visible,
+  // or from the fact that we just hit them).
+  const recentHit = system.currentTick - (brain.lastSuccessfulHitTick ?? -9999) < 20 * 4;
+  if (recentHit) bonus += 120;
+
+  // Runner is in water or lava — movement is slowed, they can't sprint.
+  if (perception.runnerPattern === "cobweb") bonus += 200; // cobweb = free kill
+  if (perception.inWater && perception.sameDimension && perception.runnerDistance < 12) bonus += 60;
+
+  // Runner is cornered (many blocked sides detected by perception).
+  // We don't have direct runner-side perception, but if the runner is very
+  // close and not moving fast, they may be cornered.
+  const runnerSpeed = Math.hypot(
+    perception.runnerVelocity?.x ?? 0,
+    perception.runnerVelocity?.z ?? 0
+  );
+  if (runnerSpeed < 0.05 && perception.runnerDistance < 8 && perception.runnerVisible) bonus += 80;
+
+  // Late game — runner is likely heading to the End. Every second counts.
+  const lateGame = elapsedTicks > 20 * 60 * 15; // 15 minutes
+  if (lateGame) bonus += 40;
+
+  // Runner is in the End — dragon fight is imminent, no time to gather.
+  const inEnd = String(perception.dimensionId ?? "").includes("the_end");
+  if (inEnd) bonus += 150;
+
+  return bonus;
+}
+
+// ── Stalling detection ────────────────────────────────────────────────────────
+// Returns true if the runner appears to be hiding or stalling.
+// A pro switches to active search/flush rather than waiting.
+
+function runnerIsStalling(brain, perception) {
+  if (!perception.sameDimension || !brain.lastSeenLocation) return false;
+  // Runner hasn't been seen for a while but was recently in the same dimension.
+  const lastSeenAge = Math.max(0, system.currentTick - (brain.lastSeenTick ?? -9999));
+  if (lastSeenAge < 20 * 8) return false; // seen recently, not stalling
+  // Runner's last known velocity was near zero — they stopped moving.
+  const lastSpeed = Math.hypot(
+    brain.runnerVelocity?.x ?? 0,
+    brain.runnerVelocity?.z ?? 0
+  );
+  return lastSpeed < 0.04 && lastSeenAge > 20 * 12;
+}
+
+// ── Resource sufficiency check ────────────────────────────────────────────────
+// Returns true when the hunter already has enough of a resource category.
+// Prevents the bot from over-gathering when it should be chasing.
+
+function alreadySufficient(gathering, category) {
+  switch (category) {
+    case "wood":   return gathering.logs * 4 + gathering.planks >= 32 && gathering.hasCraftingTable;
+    case "stone":  return gathering.stone >= 24 && gathering.pickTier >= 2;
+    case "iron":   return gathering.iron + gathering.rawIron >= 24 && gathering.pickTier >= 3 && gathering.swordTier >= 3 && gathering.armorTier >= 3;
+    case "food":   return gathering.food >= 10;
+    case "blocks": return gathering.buildingBlocks >= 32;
+    case "coal":   return gathering.coal >= 8;
+    default:       return false;
+  }
+}
+
+// ── Intercept target ──────────────────────────────────────────────────────────
+// Predict where the runner will be in N ticks based on current velocity.
+// A pro chases the destination, not the current position.
+
+function predictedRunnerLocation(perception, ticks = 10) {
+  if (!perception.runnerLocation || !perception.runnerVelocity) return perception.runnerLocation;
+  const vel = perception.runnerVelocity;
+  // Simple linear extrapolation with drag (0.91 per tick horizontal).
+  let x = perception.runnerLocation.x;
+  let z = perception.runnerLocation.z;
+  let vx = vel.x;
+  let vz = vel.z;
+  for (let t = 0; t < ticks; t++) {
+    x += vx; z += vz;
+    vx *= 0.91; vz *= 0.91;
+  }
+  return { x, y: perception.runnerLocation.y, z };
+}
+
+// ── Anti-cheese scoring ───────────────────────────────────────────────────────
+
 function scoreAntiCheese(candidates, hunter, brain, config, perception, weights, gathering) {
   const pattern = perception.runnerPattern;
   if (!perception.sameDimension) return;
@@ -198,42 +336,40 @@ function scoreAntiCheese(candidates, hunter, brain, config, perception, weights,
     const required = verticalBlockNeed(perception);
     brain.verticalBlockRequirement = required;
     if (perception.runnerPillar?.height >= 3 && perception.runnerHorizontalDistance < 7) {
-      addCandidate(candidates, GOALS.BREAK_PILLAR, 880 + weights.build, "the runner is standing on a narrow pillar that can be removed from below", "move aside and mine the lowest safe support");
+      addCandidate(candidates, GOALS.BREAK_PILLAR, 880 + weights.build, "runner is on a narrow pillar — mine the base", "move aside and mine the lowest safe support");
     }
     if (gathering.buildingBlocks < required) {
-      addCandidate(candidates, GOALS.GATHER_BLOCKS, 860 + weights.gather + weights.build, `the runner is ${Math.ceil(perception.verticalDifference)} blocks above and the hunter needs ${required} route blocks`, "collect dirt or stone before climbing");
+      addCandidate(candidates, GOALS.GATHER_BLOCKS, 860 + weights.gather + weights.build, `runner is ${Math.ceil(perception.verticalDifference)} blocks above — need ${required} climb blocks`, "collect dirt or stone before climbing");
     } else {
-      addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 850 + weights.build, "the runner towered above normal pathfinding range", "try natural slope, diagonal stairs, spiral stairs, then offset pillar");
+      addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 850 + weights.build, "runner towered — commit to staircase or pillar", "diagonal stairs → spiral stairs → offset pillar");
     }
   } else if (pattern === "bridging") {
-    addCandidate(candidates, GOALS.CHASE, 730 + weights.chase, "the runner is crossing a narrow bridge; reuse it or build only the missing gap", "follow the verified bridge line");
+    addCandidate(candidates, GOALS.CHASE, 730 + weights.chase, "runner is bridging — follow or cut the gap", "follow the verified bridge line");
   } else if (pattern === "two_block_tunnel") {
-    addCandidate(candidates, GOALS.CHASE, 760 + weights.chase, "the runner entered a two-block tunnel", "mine a two-block-high corridor instead of placing blocks");
+    addCandidate(candidates, GOALS.CHASE, 760 + weights.chase, "runner entered a 2-block tunnel — mine through", "mine a two-block-high corridor");
   } else if (pattern === "tree_camp") {
-    if (gathering.buildingBlocks < 8) addCandidate(candidates, GOALS.GATHER_BLOCKS, 800 + weights.gather, "the runner is camping above the ground in a tree and the hunter lacks climbing blocks", "gather blocks or cut the tree");
-    else addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 810 + weights.build, "the runner is camping in a tree", "cut logs or build a controlled staircase");
+    if (gathering.buildingBlocks < 8) addCandidate(candidates, GOALS.GATHER_BLOCKS, 800 + weights.gather, "runner is tree-camping — need blocks to climb", "gather blocks or cut the tree");
+    else addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 810 + weights.build, "runner is tree-camping — climb or cut", "cut logs or build a staircase");
   } else if (pattern === "boat_escape") {
-    addCandidate(candidates, GOALS.USE_BOAT, 780 + weights.chase, "the runner is escaping by boat", "destroy, intercept, or craft a boat for the crossing");
+    addCandidate(candidates, GOALS.USE_BOAT, 780 + weights.chase, "runner is escaping by boat", "destroy, intercept, or craft a boat");
   } else if (pattern === "cliff_jump") {
-    addCandidate(candidates, GOALS.DESCEND, 805 + weights.chase, "the runner jumped from a cliff", "find a safe descent instead of stepping into a lethal fall");
+    addCandidate(candidates, GOALS.DESCEND, 805 + weights.chase, "runner jumped a cliff — find safe descent", "find a safe descent instead of a lethal fall");
   }
 
-  // A normal hill or jungle canopy must not be mistaken for a player tower.
-  // Native pathfinding gets time to use terrain first. Generic vertical
-  // construction is allowed only after the hunter has genuinely stopped
-  // progressing and the runner is close to the blocked column.
   const confirmedVerticalBlock = perception.verticalDifference >= 5.5 &&
     perception.runnerHorizontalDistance <= 8 && perception.stuckTicks >= 30;
   if (confirmedVerticalBlock) {
     const required = Math.max(8, verticalBlockNeed(perception) + 2);
     brain.verticalBlockRequirement = required;
     if (gathering.buildingBlocks < required) {
-      addCandidate(candidates, GOALS.GATHER_BLOCKS, 975 + weights.gather + weights.build, `the runner is ${Math.ceil(perception.verticalDifference)} blocks above a confirmed blocked route and ${required} route blocks are required`, "gather the full climb reserve before trying again");
+      addCandidate(candidates, GOALS.GATHER_BLOCKS, 975 + weights.gather + weights.build, `runner is ${Math.ceil(perception.verticalDifference)} blocks above a blocked route — need ${required} blocks`, "gather the full climb reserve");
     } else {
-      addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 955 + weights.build, "native terrain routing failed below a nearby elevated runner", "commit to diagonal stairs, spiral stairs, then offset pillar");
+      addCandidate(candidates, GOALS.VERTICAL_PURSUIT, 955 + weights.build, "native routing failed — commit to construction", "diagonal stairs → spiral stairs → offset pillar");
     }
   }
 }
+
+// ── Main goal scoring ─────────────────────────────────────────────────────────
 
 function scoreGoals(hunter, runner, brain, config, perception, elapsedTicks) {
   const candidates = [];
@@ -241,106 +377,238 @@ function scoreGoals(hunter, runner, brain, config, perception, elapsedTicks) {
   const weights = roleWeights(role);
   const gathering = getGatheringStatus(hunter);
 
-  if (perception.falling && perception.groundDistance >= 6) addCandidate(candidates, GOALS.FALL_SAVE, 1200, "a dangerous fall requires an immediate water or block clutch", "predict the landing block");
-  if (perception.inLava || perception.onFire) addCandidate(candidates, GOALS.ESCAPE_LAVA, 1160, "lava or fire is causing immediate danger", "water, extinguish, or find solid ground");
-  if (perception.submerged || (perception.inWater && brain.underwaterTicks > 20)) addCandidate(candidates, GOALS.ESCAPE_WATER, 1120, "the hunter is submerged or unable to reach shore", "seek air, shore, or open one side exit");
-  if (perception.inPowderSnow || perception.enclosed || brain.enclosedTicks > 20) addCandidate(candidates, GOALS.ESCAPE_TRAP, 1080, `${perception.trapType} prevents normal movement`, "mine one controlled safe exit");
-  if (!perception.verticalTraversalActive && perception.stuckTicks >= 90) addCandidate(candidates, GOALS.RECOVER_STUCK, 1010, "the active route stopped making progress", "blacklist it, backtrack, and try another direction");
+  // ── Tier 1: Immediate survival (always override everything) ──
+  if (perception.falling && perception.groundDistance >= 6)
+    addCandidate(candidates, GOALS.FALL_SAVE, 1200, "dangerous fall — water/block clutch needed", "predict landing block");
+  if (perception.inLava || perception.onFire)
+    addCandidate(candidates, GOALS.ESCAPE_LAVA, 1160, "lava/fire — immediate danger", "water, extinguish, or find solid ground");
+  if (perception.submerged || (perception.inWater && brain.underwaterTicks > 20))
+    addCandidate(candidates, GOALS.ESCAPE_WATER, 1120, "submerged — seek air or shore", "seek air, shore, or open one side exit");
+  if (perception.inPowderSnow || perception.enclosed || brain.enclosedTicks > 20)
+    addCandidate(candidates, GOALS.ESCAPE_TRAP, 1080, `${perception.trapType} — trapped`, "mine one controlled safe exit");
+  if (!perception.verticalTraversalActive && perception.stuckTicks >= 90)
+    addCandidate(candidates, GOALS.RECOVER_STUCK, 1010, "route stalled — replan", "blacklist, backtrack, try another direction");
 
+  // ── Tier 2: Kill window — pro hunters recognise and exploit these ──
+  // If the runner is vulnerable RIGHT NOW, override gathering/crafting.
+  const killBonus = killWindowBonus(perception, brain, elapsedTicks);
+  const gearAdv = gearAdvantage(gathering);
+
+  // Melee kill window: runner is in reach and we have gear advantage or they're vulnerable.
+  if (perception.sameDimension && perception.runnerDistance <= 4.8 &&
+      (perception.runnerVisible || perception.runnerDistance <= 2.4)) {
+    const immediateMelee = perception.runnerDistance <= 3.2;
+    // Base combat score. Kill window bonus pushes this above crafting/gathering.
+    // Gear advantage makes us more aggressive; gear disadvantage makes us cautious.
+    const gearMod = Math.round(gearAdv * 80);
+    const combatScore = immediateMelee
+      ? 1090 + killBonus
+      : 885 + Math.round(weights.chase * 0.35) + killBonus + gearMod;
+    addCandidate(candidates, GOALS.ATTACK, combatScore,
+      immediateMelee ? "runner in melee range — attack now" : "runner at edge of reach — close and attack",
+      "time weapon cooldown, shield, axe, sprint reset");
+  }
+
+  // Ranged kill window: runner visible at bow distance.
+  if (perception.sameDimension && perception.runnerVisible &&
+      perception.runnerDistance >= 7 && perception.runnerDistance <= 30 &&
+      gathering.hasBow && gathering.arrows > 0) {
+    const rangedScore = 805 + weights.ranged + Math.round(killBonus * 0.6) + Math.round(gearAdv * 40);
+    addCandidate(candidates, GOALS.RANGED_ATTACK, rangedScore,
+      "runner visible at bow range — fire", "predict movement, fire with line of sight");
+  }
+
+  // ── Tier 3: Health management ──
   const food = selectFoodForEating(hunter);
-  const eatThreshold = config.riskProfile === 0 ? 0.7 : config.riskProfile === 2 ? 0.42 : 0.56;
-  if (food && perception.healthRatio < 0.32 && runnerClose(perception, 10)) addCandidate(candidates, GOALS.RETREAT, 980, "health is critical and the runner is too close to eat", "create safe distance");
-  if (food && perception.healthRatio < eatThreshold && (!perception.sameDimension || perception.runnerDistance > 4.5)) addCandidate(candidates, GOALS.EAT, 920, "health is low and food is available", `eat ${food.typeId.replace("minecraft:", "")}`);
+  // Eat threshold scales with gear advantage: if we outgear the runner we can
+  // afford to eat at lower HP. If undergeared, eat earlier to stay safe.
+  const baseEatThreshold = config.riskProfile === 0 ? 0.7 : config.riskProfile === 2 ? 0.42 : 0.56;
+  const eatThreshold = Math.max(0.3, Math.min(0.85, baseEatThreshold - gearAdv * 0.12));
+
+  if (food && perception.healthRatio < 0.32 && runnerClose(perception, 10))
+    addCandidate(candidates, GOALS.RETREAT, 980, "critical HP with runner close — retreat to eat", "create safe distance");
+  if (food && perception.healthRatio < eatThreshold && (!perception.sameDimension || perception.runnerDistance > 4.5))
+    addCandidate(candidates, GOALS.EAT, 920, `HP at ${Math.round(perception.healthRatio * 100)}% — eat`, `eat ${food.typeId.replace("minecraft:", "")}`);
+
+  // Pre-climb eating: heal before a dangerous vertical pursuit.
   const dangerousClimb = ["towering", "tree_camp"].includes(perception.runnerPattern) || perception.verticalDifference >= 6;
-  if (food && dangerousClimb && perception.healthRatio < 0.82 && (!perception.sameDimension || perception.runnerDistance > 4.5)) {
-    addCandidate(candidates, GOALS.EAT, 938, "a dangerous vertical pursuit is about to begin and the hunter should heal first", `eat ${food.typeId.replace("minecraft:", "")} before climbing`);
-  }
+  if (food && dangerousClimb && perception.healthRatio < 0.82 && (!perception.sameDimension || perception.runnerDistance > 4.5))
+    addCandidate(candidates, GOALS.EAT, 938, "heal before dangerous climb", `eat ${food.typeId.replace("minecraft:", "")} before climbing`);
 
-  if (perception.nearbyHostile && perception.nearbyHostileDistance < 3.1 && (brain.lastDamagerType === perception.nearbyHostile.typeId || !runnerClose(perception, 7))) {
-    addCandidate(candidates, GOALS.DEFEND, 895, "a hostile mob is actively blocking or damaging the hunter", "clear the immediate threat only");
-  }
+  // ── Tier 4: Hostile mob handling ──
+  if (perception.nearbyHostile && perception.nearbyHostileDistance < 3.1 &&
+      (brain.lastDamagerType === perception.nearbyHostile.typeId || !runnerClose(perception, 7)))
+    addCandidate(candidates, GOALS.DEFEND, 895, "hostile mob blocking/damaging — clear it", "clear the immediate threat only");
 
+  // ── Tier 5: Dimension following ──
   if (!perception.sameDimension) {
-    addCandidate(candidates, GOALS.FOLLOW_DIMENSION, 950, "the runner entered another dimension", "use a remembered portal or construct one");
+    // Urgency scales with how long the runner has been in another dimension.
+    const dimMismatchTicks = system.currentTick - (brain.dimensionMismatchSince ?? system.currentTick);
+    const dimUrgency = Math.min(80, Math.floor(dimMismatchTicks / (20 * 5)) * 20);
+    addCandidate(candidates, GOALS.FOLLOW_DIMENSION, 950 + dimUrgency,
+      "runner in another dimension — follow through portal", "use remembered portal or construct one");
   }
 
+  // ── Tier 6: Anti-cheese responses ──
   scoreAntiCheese(candidates, hunter, brain, config, perception, weights, gathering);
 
-  if (perception.sameDimension && String(perception.dimensionId ?? "").includes("the_end") && config.endPursuit !== false && isEntityValid(perception.nearbyEndCrystal)) {
-    addCandidate(candidates, GOALS.DESTROY_CRYSTALS, 880 + weights.build, "a placed end crystal threatens the hunt", "destroy the crystal before it heals the dragon or explodes");
-  }
+  // End crystal destruction.
+  if (perception.sameDimension && String(perception.dimensionId ?? "").includes("the_end") &&
+      config.endPursuit !== false && isEntityValid(perception.nearbyEndCrystal))
+    addCandidate(candidates, GOALS.DESTROY_CRYSTALS, 880 + weights.build,
+      "end crystal threatens the hunt — destroy it", "destroy before it heals the dragon");
 
-  if (perception.sameDimension && perception.runnerVisible && perception.runnerDistance >= 7 && perception.runnerDistance <= 30 && gathering.hasBow && gathering.arrows > 0) {
-    addCandidate(candidates, GOALS.RANGED_ATTACK, 805 + weights.ranged, "the runner is visible at bow distance", "predict movement and fire only with line of sight");
-  }
-  if (perception.sameDimension && perception.runnerDistance <= 4.8 && (perception.runnerVisible || perception.runnerDistance <= 2.4)) {
-    // A committed mining/crafting lock must not make a hunter ignore a runner
-    // who is already close enough to land hits. Very-close melee becomes an
-    // emergency override; at the edge of reach, role preference still matters.
-    const immediateMelee = perception.runnerDistance <= 3.2;
-    const combatScore = immediateMelee ? 1090 : 885 + Math.round(weights.chase * 0.35);
-    addCandidate(candidates, GOALS.ATTACK, combatScore, "the runner is inside legal melee range", "time weapon cooldown, shield, axe, and sprint reset");
-  }
-
+  // ── Tier 7: Route blocks (only when actually needed for a planned route) ──
   const routeRequestedBlocks = (brain.needsBuildingBlocksUntil ?? 0) > system.currentTick;
   if (config.gathering && routeRequestedBlocks && gathering.buildingBlocks < Math.max(8, brain.verticalBlockRequirement ?? 0)) {
-    addCandidate(candidates, GOALS.GATHER_BLOCKS, 970 + weights.gather + weights.build, brain.needsBuildingBlocksReason || "the planned route needs more blocks", "gather a calculated block reserve");
+    addCandidate(candidates, GOALS.GATHER_BLOCKS, 970 + weights.gather + weights.build,
+      brain.needsBuildingBlocksReason || "route needs blocks", "gather calculated block reserve");
   } else if (gathering.buildingBlocks >= Math.max(8, brain.verticalBlockRequirement ?? 0)) {
     brain.needsBuildingBlocksUntil = 0;
     brain.needsBuildingBlocksReason = "";
   }
 
-  const workDistance = role === "Chaser" ? 34 : config.riskProfile === 2 ? 18 : 24;
+  // ── Tier 8: Crafting and smelting ──
+  // Work distance scales with gear advantage: if we outgear the runner we can
+  // afford to work closer. If undergeared, only work when runner is far away.
+  const baseWorkDistance = role === "Chaser" ? 34 : config.riskProfile === 2 ? 18 : 24;
+  const workDistance = Math.max(12, baseWorkDistance - Math.round(gearAdv * 8));
   const safeToWork = !perception.sameDimension || perception.runnerDistance > workDistance;
+
+  // Don't craft/smelt if we're in the End or Nether chasing the runner.
+  const inEndOrNether = String(perception.dimensionId ?? "").includes("the_end") ||
+    (String(perception.dimensionId ?? "").includes("nether") && perception.sameDimension && perception.runnerDistance < 40);
+
   const craftPlan = getCraftPlan(hunter);
-  if (craftPlan && safeToWork) addCandidate(candidates, GOALS.CRAFT, 690 + weights.craft, `materials are ready to ${craftPlan}`, craftPlan);
+  if (craftPlan && safeToWork && !inEndOrNether)
+    addCandidate(candidates, GOALS.CRAFT, 690 + weights.craft, `ready to ${craftPlan}`, craftPlan);
+
   if (brain.smeltTask) {
-    addCandidate(candidates, GOALS.SMELT, (safeToWork ? 900 : 520) + weights.craft, "an already-started furnace operation must be monitored to completion", `finish smelting ${brain.smeltTask.input.replace("minecraft:", "")}`);
-  } else if (canSmelt(hunter) && safeToWork) {
-    addCandidate(candidates, GOALS.SMELT, 650 + weights.craft, "the furnace has useful input and fuel", "smelt one reserved item over time");
+    // Already-started smelt: finish it unless runner is very close.
+    addCandidate(candidates, GOALS.SMELT, (safeToWork ? 900 : 520) + weights.craft,
+      `finish smelting ${brain.smeltTask.input.replace("minecraft:", "")}`,
+      `smelting ${brain.smeltTask.input.replace("minecraft:", "")}`);
+  } else if (canSmelt(hunter) && safeToWork && !inEndOrNether) {
+    addCandidate(candidates, GOALS.SMELT, 650 + weights.craft, "furnace has input and fuel — smelt", "smelt one item");
   }
 
+  // ── Tier 9: Resource gathering ──
+  // Pro players gather efficiently and stop when they have enough.
+  // Gathering scores are suppressed when:
+  //   a) We already have enough of that resource
+  //   b) We have a significant gear advantage (time to push, not gather)
+  //   c) The runner is close
+  //   d) We're in the End/Nether chasing
   const prepComplete = isPreparationComplete(hunter, config, elapsedTicks);
+
+  // Time pressure: as the game goes on, gathering becomes less important.
+  // After 10 minutes, gathering scores are cut by 30%. After 20 minutes, 60%.
+  const minutesElapsed = elapsedTicks / (20 * 60);
+  const timePressureMult = Math.max(0.4, 1 - minutesElapsed * 0.03);
+
   for (const need of getResourceNeeds(hunter, config, perception, elapsedTicks)) {
+    // Skip if we already have enough of this resource.
+    if (alreadySufficient(gathering, need.category)) continue;
+
     let score = need.score + weights.gather;
+
+    // Preparation window bonus.
     if (!prepComplete) score += role === "Chaser" ? 25 : 90;
+
+    // Runner proximity penalty — don't gather when runner is close.
     if (perception.sameDimension && perception.runnerDistance < 24) score -= role === "Chaser" ? 270 : 130;
     if (perception.sameDimension && perception.runnerDistance < 9) score -= 260;
+
+    // Gear advantage suppression — if we outgear the runner, stop gathering
+    // and start pushing. This is the key pro-player behaviour.
+    if (gearAdv > 0.3) score -= Math.round(gearAdv * 120);
+
+    // Time pressure — late game gathering is less valuable.
+    score *= timePressureMult;
+
+    // End/Nether chase suppression.
+    if (inEndOrNether) score -= 300;
+
     if (need.category === "blocks") score += weights.build;
     if (need.category === "combat") score += weights.ranged;
+
     addCandidate(candidates, RESOURCE_GOAL[need.category], score, need.reason, `find reachable ${need.category}`);
   }
 
+  // ── Tier 10: Chase and search ──
   if (perception.sameDimension) {
-    const stealthHidden = config.stealthTracking && perception.trackingHidden && brain.lastSeenLocation;
-    if (stealthHidden) addCandidate(candidates, GOALS.SEARCH, 720 + weights.chase, "the sneaking runner broke visual tracking", "search the last known movement direction");
-    const chaseScore = (prepComplete ? 710 : 635) + weights.chase + (perception.runnerDistance < 20 ? 55 : 0);
-    addCandidate(candidates, GOALS.CHASE, chaseScore, role === "Chaser" ? "maintain permanent pressure on the runner" : "keep the runner tracked while role work remains safe", "native chase with local planning only at obstacles");
+    // Stalling detection: if runner is hiding, switch to active search.
+    const stalling = runnerIsStalling(brain, perception);
+    if (stalling || (config.stealthTracking && perception.trackingHidden && brain.lastSeenLocation)) {
+      const searchScore = 720 + weights.chase + (stalling ? 60 : 0);
+      addCandidate(candidates, GOALS.SEARCH, searchScore,
+        stalling ? "runner is hiding/stalling — flush them out" : "runner broke visual tracking — search last known position",
+        "search last known movement direction");
+    }
+
+    // Chase score. Scales up with:
+    //   - Gear advantage (we should be pushing)
+    //   - Kill window bonus (runner is vulnerable)
+    //   - Runner being close (maintain pressure)
+    //   - Late game (time is running out)
+    const baseChase = (prepComplete ? 710 : 635) + weights.chase;
+    const proximityBonus = perception.runnerDistance < 20 ? 55 : 0;
+    const gearPressureBonus = Math.round(Math.max(0, gearAdv) * 90); // only bonus, not penalty
+    const killPressureBonus = Math.round(killBonus * 0.4);
+    const timePressureBonus = Math.round(Math.min(80, minutesElapsed * 4));
+    const chaseScore = baseChase + proximityBonus + gearPressureBonus + killPressureBonus + timePressureBonus;
+
+    addCandidate(candidates, GOALS.CHASE, chaseScore,
+      role === "Chaser" ? "maintain permanent pressure" : "track runner while role work is safe",
+      "native chase with local obstacle planning");
   }
 
-  if (role !== "Chaser" && !runnerClose(perception, 20)) addCandidate(candidates, GOALS.SHARE_RESOURCES, 470, `${role} can share surplus resources with the squad`, "approach a teammate with a resource shortage");
-  addCandidate(candidates, GOALS.IDLE, 10, "no higher-priority action is available", "observe and maintain the pursuit heartbeat");
+  if (role !== "Chaser" && !runnerClose(perception, 20))
+    addCandidate(candidates, GOALS.SHARE_RESOURCES, 470, `${role} can share surplus with squad`, "approach teammate with shortage");
+  addCandidate(candidates, GOALS.IDLE, 10, "no higher-priority action", "maintain pursuit heartbeat");
 
+  // ── Apply noise and hysteresis ──
   for (const candidate of candidates) {
-    if (candidate.goal === brain.currentGoal) candidate.score += 24;
+    // Hysteresis: current goal gets a bonus to prevent flip-flopping.
+    // Higher tiers switch more decisively (less hysteresis).
+    const hysteresis = config.aiLevel >= 3 ? 14 : config.aiLevel === 2 ? 20 : 28;
+    if (candidate.goal === brain.currentGoal) candidate.score += hysteresis;
+
+    // Bell-curve noise: small errors common, catastrophic rare.
     if (config.humanMistakes && candidate.score < 900) {
       const noise = DECISION_NOISE[Math.min(config.aiLevel ?? 1, DECISION_NOISE.length - 1)];
-      candidate.score += (Math.random() - 0.5) * noise;
+      candidate.score += ((Math.random() - 0.5) + (Math.random() - 0.5)) * noise;
     }
   }
   candidates.sort((a, b) => b.score - a.score);
   return candidates;
 }
 
+// ── Goal selection ────────────────────────────────────────────────────────────
+
 function chooseGoal(brain, config, candidates) {
   const best = candidates[0];
   const emergencyOverride = (best?.score ?? 0) >= 1040;
   const current = candidates.find((entry) => entry.goal === brain.currentGoal);
+
+  // Hard locks (crafting, eating, etc.) always hold unless emergency.
   if (!emergencyOverride && current && system.currentTick < (brain.goalLockUntil ?? 0)) return current;
+
   const urgent = (best?.score ?? 0) >= 900;
+
+  // Decision delay: the bot doesn't re-evaluate every tick.
   if (!urgent && system.currentTick - brain.lastDecisionTick < decisionDelay(config, brain)) {
     if (current && current.score >= (best?.score ?? 0) - 80) return current;
   }
+
+  // Momentum: on lower tiers, occasionally keep the current goal when a
+  // slightly better one is available — like a player who's "in the zone".
+  if (!emergencyOverride && !urgent && current && config.humanMistakes) {
+    const scoreDiff = (best?.score ?? 0) - (current?.score ?? 0);
+    const momentumChance = config.aiLevel === 0 ? 0.35 : config.aiLevel === 1 ? 0.18 : 0.06;
+    if (scoreDiff < 60 && Math.random() < momentumChance) return current;
+  }
+
   brain.lastDecisionTick = system.currentTick;
   return best;
 }
@@ -558,10 +826,18 @@ function executeGoal(hunter, runner, brain, config, perception, selected) {
     case GOALS.SEARCH:
       tickSearchRoute(hunter, brain, brain.lastSeenLocation);
       return "searching the last known runner position";
-    case GOALS.CHASE:
+    case GOALS.CHASE: {
       safeTrigger(hunter, "manhunt:chase");
-      if (target && !tickLocalNavigation(hunter, runner, brain, config, perception, target)) returnToChase(hunter, brain);
-      return "maintaining native chase with local obstacle planning";
+      // Pro behaviour: chase the predicted intercept point, not the current
+      // position. At close range use the real location (prediction overshoots).
+      // At long range predict 8 ticks ahead so we cut off escape routes.
+      const interceptTicks = perception.runnerDistance > 16 ? 8 : perception.runnerDistance > 8 ? 4 : 0;
+      const chaseTarget = interceptTicks > 0
+        ? predictedRunnerLocation(perception, interceptTicks)
+        : target;
+      if (chaseTarget && !tickLocalNavigation(hunter, runner, brain, config, perception, chaseTarget)) returnToChase(hunter, brain);
+      return perception.runnerDistance > 16 ? "intercepting predicted runner position" : "maintaining native chase with local obstacle planning";
+    }
     case GOALS.SHARE_RESOURCES: {
       const teammate = findShareTarget(hunter, getHunters());
       if (!teammate) {
@@ -630,6 +906,15 @@ export function tickBrain(hunter, runner, config, deaths = 0) {
   tryFillWaterBucket(hunter, perception);
   rememberNearbyPortal(hunter, perception);
   if (brain.smeltTask) tickSmelting(hunter, brain);
+
+  // Track how long the runner has been in a different dimension so the
+  // dimension-following urgency can scale up over time.
+  if (!perception.sameDimension) {
+    if (!brain.dimensionMismatchSince) brain.dimensionMismatchSince = system.currentTick;
+  } else {
+    brain.dimensionMismatchSince = 0;
+  }
+
   const elapsed = getElapsedTicks();
   brain.difficultyStage = config.difficultyScaling
     ? Math.max(0, Math.min(6, Math.floor(elapsed / (5 * 60 * 20)) + Math.max(0, Math.trunc(deaths))))

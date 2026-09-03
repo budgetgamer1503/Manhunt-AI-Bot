@@ -2,15 +2,50 @@ import { EquipmentSlot, ItemStack, system } from "@minecraft/server";
 import { BUILDING_ITEMS, FOOD_HEAL, FOOD_ITEMS } from "./constants.js";
 import { isEntityValid, safeDynamicGet, safeDynamicSet } from "./utils.js";
 
+// Per-tick inventory count cache. Keyed by entity ID; each entry stores the
+// tick it was built so stale data is never used across brain intervals.
+// LRU eviction: when the map exceeds MAX_CACHE_SIZE the oldest entry is
+// removed instead of clearing the entire cache (which would force every
+// hunter to rebuild counts on the same tick and spike CPU).
 const countCache = new Map();
+const MAX_CACHE_SIZE = 32;
+
+// Hoisted to module scope so setEquipment never allocates a new Map per call.
+const SLOT_COMMAND_NAMES = new Map([
+  [EquipmentSlot.Mainhand, "slot.weapon.mainhand"],
+  [EquipmentSlot.Offhand,  "slot.weapon.offhand"],
+  [EquipmentSlot.Head,     "slot.armor.head"],
+  [EquipmentSlot.Chest,    "slot.armor.chest"],
+  [EquipmentSlot.Legs,     "slot.armor.legs"],
+  [EquipmentSlot.Feet,     "slot.armor.feet"]
+]);
 
 const EQUIPMENT_TRACK_KEYS = new Map([
   [EquipmentSlot.Mainhand, "manhunt:equipped_mainhand"],
-  [EquipmentSlot.Offhand, "manhunt:equipped_offhand"],
-  [EquipmentSlot.Head, "manhunt:equipped_head"],
-  [EquipmentSlot.Chest, "manhunt:equipped_chest"],
-  [EquipmentSlot.Legs, "manhunt:equipped_legs"],
-  [EquipmentSlot.Feet, "manhunt:equipped_feet"]
+  [EquipmentSlot.Offhand,  "manhunt:equipped_offhand"],
+  [EquipmentSlot.Head,     "manhunt:equipped_head"],
+  [EquipmentSlot.Chest,    "manhunt:equipped_chest"],
+  [EquipmentSlot.Legs,     "manhunt:equipped_legs"],
+  [EquipmentSlot.Feet,     "manhunt:equipped_feet"]
+]);
+
+// Slot order used by equipmentSnapshot / clearEquipment – defined once.
+const ALL_EQUIPMENT_SLOTS = Object.freeze([
+  EquipmentSlot.Mainhand,
+  EquipmentSlot.Offhand,
+  EquipmentSlot.Head,
+  EquipmentSlot.Chest,
+  EquipmentSlot.Legs,
+  EquipmentSlot.Feet
+]);
+
+const EQUIPMENT_SLOT_NAMES = Object.freeze([
+  ["mainhand", EquipmentSlot.Mainhand],
+  ["offhand",  EquipmentSlot.Offhand],
+  ["head",     EquipmentSlot.Head],
+  ["chest",    EquipmentSlot.Chest],
+  ["legs",     EquipmentSlot.Legs],
+  ["feet",     EquipmentSlot.Feet]
 ]);
 
 function trackedEquipment(entity, slot) {
@@ -45,11 +80,12 @@ export function getContainer(entity) {
 function captureInventorySlots(entity) {
   const container = getContainer(entity);
   if (!container) return undefined;
+  // Store raw ItemStack references for the snapshot. We only clone on restore,
+  // which avoids allocating a clone object for every slot on every transaction.
   const slots = [];
   for (let slot = 0; slot < container.size; slot++) {
     try {
-      const item = container.getItem(slot);
-      slots.push(item?.clone?.() ?? item);
+      slots.push(container.getItem(slot) ?? undefined);
     } catch {
       slots.push(undefined);
     }
@@ -129,7 +165,12 @@ function buildCounts(entity) {
   }
 
   if (key) {
-    if (countCache.size > 64) countCache.clear();
+    // LRU eviction: remove the oldest entry rather than nuking the whole cache.
+    // Clearing all entries forces every hunter to rebuild on the same tick,
+    // which creates a CPU spike proportional to squad size.
+    if (countCache.size >= MAX_CACHE_SIZE) {
+      countCache.delete(countCache.keys().next().value);
+    }
     countCache.set(key, { tick: system.currentTick, counts });
   }
   return counts;
@@ -173,6 +214,8 @@ export function addItem(entity, typeId, amount = 1) {
       const left = leftover ? Math.max(0, Math.trunc(Number(leftover.amount) || 0)) : 0;
       const inserted = Math.max(0, offered - left);
       remaining -= inserted;
+      // Guard: if nothing was inserted and there is no leftover the inventory
+      // is full. Break immediately to avoid an infinite loop.
       if (inserted <= 0 || leftover) {
         invalidateInventory(entity);
         return remaining <= 0;
@@ -318,15 +361,8 @@ export function setEquipment(entity, slot, typeId = undefined) {
     }
   }
 
-  const slotNames = new Map([
-    [EquipmentSlot.Mainhand, "slot.weapon.mainhand"],
-    [EquipmentSlot.Offhand, "slot.weapon.offhand"],
-    [EquipmentSlot.Head, "slot.armor.head"],
-    [EquipmentSlot.Chest, "slot.armor.chest"],
-    [EquipmentSlot.Legs, "slot.armor.legs"],
-    [EquipmentSlot.Feet, "slot.armor.feet"]
-  ]);
-  const commandSlot = slotNames.get(slot);
+  // SLOT_COMMAND_NAMES is module-scoped; no allocation per call.
+  const commandSlot = SLOT_COMMAND_NAMES.get(slot);
   if (commandSlot && !success) {
     try {
       const result = entity.runCommand(`replaceitem entity @s ${commandSlot} 0 ${typeId ?? "air"} 1`);
@@ -366,14 +402,7 @@ export function equipOffhand(entity, typeId) {
 }
 
 export function clearEquipment(entity) {
-  for (const slot of [
-    EquipmentSlot.Mainhand,
-    EquipmentSlot.Offhand,
-    EquipmentSlot.Head,
-    EquipmentSlot.Chest,
-    EquipmentSlot.Legs,
-    EquipmentSlot.Feet
-  ]) setEquipment(entity, slot, undefined);
+  for (const slot of ALL_EQUIPMENT_SLOTS) setEquipment(entity, slot, undefined);
 }
 
 export function clearHunterLoadout(entity) {
@@ -392,15 +421,20 @@ export function getSelectedItem(player) {
 }
 
 export function getBestFood(entity) {
+  // Use the already-built count map so we pay one container scan instead of
+  // one per food type. FOOD_ITEMS is ordered best-to-worst, so the first hit
+  // is always the highest-value food the hunter owns.
+  const counts = buildCounts(entity);
   for (const typeId of FOOD_ITEMS) {
-    if (countItem(entity, typeId) > 0) return { typeId, heal: FOOD_HEAL[typeId] ?? 2 };
+    if ((counts.get(typeId) ?? 0) > 0) return { typeId, heal: FOOD_HEAL[typeId] ?? 2 };
   }
   return undefined;
 }
 
 export function getBuildingItem(entity) {
+  const counts = buildCounts(entity);
   for (const typeId of BUILDING_ITEMS) {
-    if (countItem(entity, typeId) > 0) return typeId;
+    if ((counts.get(typeId) ?? 0) > 0) return typeId;
   }
   return undefined;
 }
@@ -417,6 +451,10 @@ export function takeInventorySnapshot(entity) {
 
 export function restoreInventorySnapshot(entity, snapshot) {
   if (!snapshot || typeof snapshot !== "object") return;
+  // Clear first so a double-restore (e.g. respawn + config reload) does not
+  // duplicate items. The caller is responsible for ensuring the entity is in
+  // a clean state before calling this, but clearing here is a safe guard.
+  clearInventory(entity);
   for (const [typeId, amount] of Object.entries(snapshot)) addItem(entity, typeId, amount);
 }
 
@@ -485,16 +523,9 @@ export function inventorySummary(entity, limit = 12) {
 
 
 export function equipmentSnapshot(entity) {
-  const slots = [
-    ["mainhand", EquipmentSlot.Mainhand],
-    ["offhand", EquipmentSlot.Offhand],
-    ["head", EquipmentSlot.Head],
-    ["chest", EquipmentSlot.Chest],
-    ["legs", EquipmentSlot.Legs],
-    ["feet", EquipmentSlot.Feet]
-  ];
+  // EQUIPMENT_SLOT_NAMES is module-scoped; no array allocation per call.
   const result = {};
-  for (const [name, slot] of slots) {
+  for (const [name, slot] of EQUIPMENT_SLOT_NAMES) {
     const item = getEquipment(entity, slot);
     result[name] = item?.typeId ?? trackedEquipment(entity, slot);
   }
@@ -508,12 +539,16 @@ export function equipmentSummary(entity) {
     .join(", ");
 }
 
+const VALID_ARMOR_TIERS = new Set(["iron", "diamond", "netherite"]);
+
 export function equipArmorSet(entity, tier = "iron") {
-  const prefix = ["diamond", "netherite"].includes(tier) ? tier : "iron";
-  return [
-    setEquipment(entity, EquipmentSlot.Head, `minecraft:${prefix}_helmet`),
-    setEquipment(entity, EquipmentSlot.Chest, `minecraft:${prefix}_chestplate`),
-    setEquipment(entity, EquipmentSlot.Legs, `minecraft:${prefix}_leggings`),
-    setEquipment(entity, EquipmentSlot.Feet, `minecraft:${prefix}_boots`)
-  ].some(Boolean);
+  const prefix = VALID_ARMOR_TIERS.has(tier) ? tier : "iron";
+  // Track whether at least one piece was applied so callers can detect
+  // partial failures (e.g. entity has no equippable component).
+  let any = false;
+  if (setEquipment(entity, EquipmentSlot.Head,  `minecraft:${prefix}_helmet`))      any = true;
+  if (setEquipment(entity, EquipmentSlot.Chest, `minecraft:${prefix}_chestplate`))  any = true;
+  if (setEquipment(entity, EquipmentSlot.Legs,  `minecraft:${prefix}_leggings`))    any = true;
+  if (setEquipment(entity, EquipmentSlot.Feet,  `minecraft:${prefix}_boots`))       any = true;
+  return any;
 }
