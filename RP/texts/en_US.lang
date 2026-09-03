@@ -1,23 +1,16 @@
+pack.name=Manhunt AI Bot v1.0.3 [RP]
+pack.description=Adaptive Hunter Overhaul visuals with eight skins, player-style geometry and invisible per-hunter route nodes.
 entity.manhunt:hunter.name=Hunter
+entity.manhunt:path_node.name=
+entity.manhunt:path_node_1.name=
+entity.manhunt:path_node_2.name=
+entity.manhunt:path_node_3.name=
 item.manhunt:hunter_compass=§6Hunter Compass
 tile.manhunt:hunter_compass.name=§6Hunter Compass
-
-## Spawn Egg
 item.spawn_egg.entity.manhunt:hunter.name=Spawn Hunter
-
-## UI Messages
-manhunt.spawn.warning=§cA hunter is already active!
+manhunt.spawn.warning=§cA hunter squad is already active!
 manhunt.spawn.title=§4THE HUNT BEGINS
-manhunt.spawn.subtitle=§c⚔ %s ⚔
-
-## Taunt Messages
-manhunt.taunt.1=You can run, but you can't hide...
-manhunt.taunt.2=I can hear your heartbeat.
-manhunt.taunt.3=Getting closer...
-manhunt.taunt.4=Did you think you could escape?
-manhunt.taunt.5=I see you.
-
-## Status Messages
-manhunt.hunter.defeated=§a✓ The hunter has been defeated!
-manhunt.hunter.spawned=§c⚔ The hunt has begun!
-manhunt.addon.loaded=§e⚔ Manhunt Bot addon loaded! Use the Hunter Compass to begin.
+manhunt.spawn.subtitle=§cAdaptive hunter squad deployed
+manhunt.hunter.defeated=§aThe hunter was defeated!
+manhunt.hunter.spawned=§cThe adaptive hunt has begun!
+manhunt.addon.loaded=§eManhunt AI Bot v1.0.3 loaded. Use the Hunter Compass.

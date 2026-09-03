@@ -1,463 +1,1577 @@
 {
-	"format_version": "1.21.40",
-	"minecraft:entity": {
-		"description": {
-			"identifier": "manhunt:hunter",
-			"is_spawnable": false,
-			"is_summonable": true,
-			"is_experimental": false,
-			"properties": {
-				"manhunt:skin_id": {
-					"type": "int",
-					"range": [
-						0,
-						7
-					],
-					"default": 0,
-					"client_sync": true
-				},
-				"manhunt:phase": {
-					"type": "enum",
-					"values": [
-						"idle",
-						"chase",
-						"prep"
-					],
-					"default": "idle",
-					"client_sync": true
-				},
-				"manhunt:action": {
-					"type": "enum",
-					"values": [
-						"none",
-						"attacking",
-						"eating",
-						"placing",
-						"mining"
-					],
-					"default": "none",
-					"client_sync": true
-				}
-			}
-		},
-		"component_groups": {
-			"manhunt:chase_phase": {
-				"minecraft:behavior.nearest_attackable_target": {
-					"priority": 1,
-					"must_see": false,
-					"reselect_targets": true,
-					"within_radius": 400,
-					"must_see_forget_duration": 60,
-					"entity_types": [
-						{
-							"filters": {
-								"test": "is_family",
-								"subject": "other",
-								"value": "player"
-							},
-							"max_dist": 400
-						}
-					]
-				},
-				"minecraft:behavior.melee_attack": {
-					"priority": 2,
-					"speed_multiplier": 1.15,
-					"track_target": true,
-					"reach_multiplier": 1,
-					"require_complete_path": false
-				},
-				"minecraft:movement": {
-					"value": 0.55
-				}
-			},
-			"manhunt:prep_phase": {
-				"minecraft:behavior.random_stroll": {
-					"priority": 5,
-					"speed_multiplier": 0.6,
-					"xz_dist": 8,
-					"y_dist": 3
-				},
-				"minecraft:movement": {
-					"value": 0.25
-				}
-			},
-			"manhunt:idle_phase": {
-				"minecraft:behavior.random_look_around": {
-					"priority": 8
-				},
-				"minecraft:movement": {
-					"value": 0.3
-				}
-			},
-			"manhunt:building_phase": {
-				"minecraft:movement": {
-					"value": 0.15
-				}
-			},
-			"manhunt:skin_steve": {},
-			"manhunt:skin_alex": {},
-			"manhunt:skin_zombie": {},
-			"manhunt:skin_skeleton": {},
-			"manhunt:skin_creeper": {},
-			"manhunt:skin_custom": {},
-			"manhunt:skin_dream": {},
-			"manhunt:skin_technoblade": {}
-		},
-		"components": {
-			"minecraft:type_family": {
-				"family": [
-					"hunter",
-					"mob",
-					"player"
-				]
-			},
-			"minecraft:health": {
-				"value": 20,
-				"max": 20
-			},
-			"minecraft:nameable": {
-				"always_show": true
-			},
-			"minecraft:collision_box": {
-				"width": 0.6,
-				"height": 1.8
-			},
-			"minecraft:physics": {},
-			"minecraft:pushable": {
-				"is_pushable": true,
-				"is_pushable_by_piston": true
-			},
-			"minecraft:navigation.walk": {
-				"can_path_over_water": true,
-				"can_swim": true,
-				"can_pass_doors": true,
-				"can_open_doors": true,
-				"avoid_water": false,
-				"avoid_damage_blocks": true,
-				"can_walk": true,
-				"can_walk_in_lava": false,
-				"can_path_from_air": true,
-				"can_breach": true,
-				"is_amphibious": false
-			},
-			"minecraft:movement": {
-				"value": 0.45
-			},
-			"minecraft:movement.basic": {},
-			"minecraft:jump.static": {
-				"jump_power": 0.42
-			},
-			"minecraft:can_climb": {},
-			"minecraft:breathable": {
-				"total_supply": 15,
-				"suffocate_time": 0,
-				"breathes_air": true,
-				"breathes_water": false
-			},
-			"minecraft:knockback_resistance": {
-				"value": 0
-			},
-			"minecraft:attack": {
-				"damage": 3
-			},
-			"minecraft:follow_range": {
-				"value": 400,
-				"max": 400
-			},
-			"minecraft:persistent": {},
-			"minecraft:equippable": {
-				"slots": [
-					{
-						"slot": 0,
-						"accepted_items": [
-							"minecraft:wooden_sword",
-							"minecraft:stone_sword",
-							"minecraft:iron_sword",
-							"minecraft:diamond_sword",
-							"minecraft:netherite_sword",
-							"minecraft:wooden_axe",
-							"minecraft:stone_axe",
-							"minecraft:iron_axe",
-							"minecraft:diamond_axe",
-							"minecraft:wooden_pickaxe",
-							"minecraft:stone_pickaxe",
-							"minecraft:iron_pickaxe",
-							"minecraft:diamond_pickaxe",
-							"minecraft:netherite_pickaxe",
-							"minecraft:bread",
-							"minecraft:cooked_beef",
-							"minecraft:cooked_porkchop",
-							"minecraft:cooked_mutton",
-							"minecraft:cooked_chicken",
-							"minecraft:cooked_salmon",
-							"minecraft:cooked_cod",
-							"minecraft:apple",
-							"minecraft:golden_apple",
-							"minecraft:dried_kelp",
-							"minecraft:cobblestone",
-							"minecraft:dirt",
-							"minecraft:oak_planks",
-							"minecraft:spruce_planks",
-							"minecraft:birch_planks",
-							"minecraft:stone",
-							"minecraft:cobbled_deepslate",
-							"minecraft:netherrack",
-							"minecraft:water_bucket",
-							"minecraft:lava_bucket",
-							"minecraft:bucket",
-							"minecraft:oak_log",
-							"minecraft:spruce_log",
-							"minecraft:birch_log",
-							"minecraft:jungle_log",
-							"minecraft:acacia_log",
-							"minecraft:dark_oak_log",
-							"minecraft:stick",
-							"minecraft:crafting_table",
-							"minecraft:furnace",
-							"minecraft:coal",
-							"minecraft:raw_iron",
-							"minecraft:iron_ingot",
-							"minecraft:torch"
-						]
-					},
-					{
-						"slot": 1,
-						"accepted_items": [
-							"minecraft:shield"
-						]
-					},
-					{
-						"slot": 2,
-						"accepted_items": [
-							"minecraft:leather_helmet",
-							"minecraft:iron_helmet",
-							"minecraft:diamond_helmet",
-							"minecraft:netherite_helmet"
-						]
-					},
-					{
-						"slot": 3,
-						"accepted_items": [
-							"minecraft:leather_chestplate",
-							"minecraft:iron_chestplate",
-							"minecraft:diamond_chestplate",
-							"minecraft:netherite_chestplate"
-						]
-					},
-					{
-						"slot": 4,
-						"accepted_items": [
-							"minecraft:leather_leggings",
-							"minecraft:iron_leggings",
-							"minecraft:diamond_leggings",
-							"minecraft:netherite_leggings"
-						]
-					},
-					{
-						"slot": 5,
-						"accepted_items": [
-							"minecraft:leather_boots",
-							"minecraft:iron_boots",
-							"minecraft:diamond_boots",
-							"minecraft:netherite_boots"
-						]
-					}
-				]
-			},
-			"minecraft:inventory": {
-				"inventory_size": 27,
-				"container_type": "inventory"
-			},
-			"minecraft:behavior.open_door": {
-				"priority": 3,
-				"close_door_after": true
-			},
-			"minecraft:behavior.pickup_items": {
-				"priority": 4,
-				"max_dist": 10,
-				"goal_radius": 2,
-				"speed_multiplier": 1.2,
-				"track_target": true,
-				"can_pickup_any_item": true,
-				"cooldown_after_being_attacked": 20
-			},
-			"minecraft:behavior.equip_item": {
-				"priority": 2
-			},
-			"minecraft:underwater_movement": {
-				"value": 0.2
-			},
-			"minecraft:damage_sensor": {
-				"triggers": [
-					{
-						"cause": "all",
-						"deals_damage": "yes"
-					}
-				]
-			},
-			"minecraft:behavior.float": {
-				"priority": 0
-			},
-			"minecraft:behavior.hurt_by_target": {
-				"priority": 1,
-				"alert_same_type": false,
-				"entity_types": [
-					{
-						"filters": {
-							"test": "is_family",
-							"subject": "other",
-							"value": "player"
-						}
-					},
-					{
-						"filters": {
-							"test": "is_family",
-							"subject": "other",
-							"value": "monster"
-						}
-					}
-				]
-			},
-			"minecraft:behavior.look_at_player": {
-				"priority": 9,
-				"look_distance": 2,
-				"probability": 0.02
-			},
-			"minecraft:experience_reward": {
-				"on_death": 5
-			}
-		},
-		"events": {
-			"manhunt:enter_chase": {
-				"remove": {
-					"component_groups": [
-						"manhunt:prep_phase",
-						"manhunt:idle_phase",
-						"manhunt:building_phase"
-					]
-				},
-				"add": {
-					"component_groups": [
-						"manhunt:chase_phase"
-					]
-				},
-				"set_property": {
-					"manhunt:phase": "chase"
-				}
-			},
-			"manhunt:enter_prep": {
-				"remove": {
-					"component_groups": [
-						"manhunt:chase_phase",
-						"manhunt:idle_phase",
-						"manhunt:building_phase"
-					]
-				},
-				"add": {
-					"component_groups": [
-						"manhunt:prep_phase"
-					]
-				},
-				"set_property": {
-					"manhunt:phase": "prep"
-				}
-			},
-			"manhunt:enter_idle": {
-				"remove": {
-					"component_groups": [
-						"manhunt:chase_phase",
-						"manhunt:prep_phase",
-						"manhunt:building_phase"
-					]
-				},
-				"add": {
-					"component_groups": [
-						"manhunt:idle_phase"
-					]
-				},
-				"set_property": {
-					"manhunt:phase": "idle"
-				}
-			},
-			"manhunt:enter_building": {
-				"remove": {
-					"component_groups": [
-						"manhunt:chase_phase",
-						"manhunt:prep_phase",
-						"manhunt:idle_phase"
-					]
-				},
-				"add": {
-					"component_groups": [
-						"manhunt:building_phase"
-					]
-				}
-			},
-			"manhunt:set_action_none": {
-				"set_property": {
-					"manhunt:action": "none"
-				}
-			},
-			"manhunt:set_action_attacking": {
-				"set_property": {
-					"manhunt:action": "attacking"
-				}
-			},
-			"manhunt:set_action_eating": {
-				"set_property": {
-					"manhunt:action": "eating"
-				}
-			},
-			"manhunt:set_action_placing": {
-				"set_property": {
-					"manhunt:action": "placing"
-				}
-			},
-			"manhunt:set_action_mining": {
-				"set_property": {
-					"manhunt:action": "mining"
-				}
-			},
-			"manhunt:set_skin_0": {
-				"set_property": {
-					"manhunt:skin_id": 0
-				}
-			},
-			"manhunt:set_skin_1": {
-				"set_property": {
-					"manhunt:skin_id": 1
-				}
-			},
-			"manhunt:set_skin_2": {
-				"set_property": {
-					"manhunt:skin_id": 2
-				}
-			},
-			"manhunt:set_skin_3": {
-				"set_property": {
-					"manhunt:skin_id": 3
-				}
-			},
-			"manhunt:set_skin_4": {
-				"set_property": {
-					"manhunt:skin_id": 4
-				}
-			},
-			"manhunt:set_skin_5": {
-				"set_property": {
-					"manhunt:skin_id": 5
-				}
-			},
-			"manhunt:set_skin_6": {
-				"set_property": {
-					"manhunt:skin_id": 6
-				}
-			},
-			"manhunt:set_skin_7": {
-				"set_property": {
-					"manhunt:skin_id": 7
-				}
-			}
-		}
-	}
+  "format_version": "1.26.20",
+  "minecraft:entity": {
+    "description": {
+      "identifier": "manhunt:hunter",
+      "is_spawnable": true,
+      "is_summonable": true,
+      "is_experimental": false,
+      "properties": {
+        "manhunt:skin_id": {
+          "type": "int",
+          "range": [
+            0,
+            7
+          ],
+          "default": 0,
+          "client_sync": true
+        },
+        "manhunt:hunter_index": {
+          "type": "int",
+          "range": [
+            0,
+            3
+          ],
+          "default": 0,
+          "client_sync": false
+        }
+      }
+    },
+    "component_groups": {
+      "manhunt:idle": {
+        "minecraft:movement": {
+          "value": 0.05,
+          "max": 0.05
+        },
+        "minecraft:behavior.random_look_around": {
+          "priority": 10
+        }
+      },
+      "manhunt:chase": {
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 1,
+          "must_see": false,
+          "reselect_targets": true,
+          "within_radius": 1024,
+          "entity_types": [
+            {
+              "filters": {
+                "all_of": [
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "player"
+                  },
+                  {
+                    "test": "has_tag",
+                    "subject": "other",
+                    "value": "manhunt_runner"
+                  }
+                ]
+              },
+              "max_dist": 1024,
+              "must_see": false,
+              "sprint_speed_multiplier": 1.4,
+              "walk_speed_multiplier": 1.25
+            }
+          ],
+          "must_reach": false,
+          "persist_time": 600,
+          "scan_interval": 10,
+          "set_persistent": true,
+          "target_acquisition_probability": 1.0,
+          "target_sneak_visibility_multiplier": 1.0
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.38,
+          "track_target": true,
+          "reach_multiplier": 1.0,
+          "cooldown_time": 0.58,
+          "require_complete_path": false,
+          "melee_fov": 140,
+          "min_path_time": 0.1,
+          "max_path_time": 0.35
+        }
+      },
+      "manhunt:defend": {
+        "minecraft:movement": {
+          "value": 0.34,
+          "max": 0.48
+        },
+        "minecraft:damage_sensor": {
+          "triggers": [
+            {
+              "cause": "entity_attack",
+              "deals_damage": "yes",
+              "damage_multiplier": 0.55
+            },
+            {
+              "cause": "projectile",
+              "deals_damage": "yes",
+              "damage_multiplier": 0.45
+            }
+          ]
+        },
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 1,
+          "must_see": false,
+          "reselect_targets": true,
+          "within_radius": 1024,
+          "entity_types": [
+            {
+              "filters": {
+                "all_of": [
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "player"
+                  },
+                  {
+                    "test": "has_tag",
+                    "subject": "other",
+                    "value": "manhunt_runner"
+                  }
+                ]
+              },
+              "max_dist": 1024,
+              "must_see": false,
+              "sprint_speed_multiplier": 1.34,
+              "walk_speed_multiplier": 1.25
+            }
+          ],
+          "must_reach": false,
+          "persist_time": 600,
+          "scan_interval": 10,
+          "set_persistent": true,
+          "target_acquisition_probability": 1.0,
+          "target_sneak_visibility_multiplier": 1.0
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.18,
+          "track_target": true,
+          "reach_multiplier": 1.0,
+          "cooldown_time": 0.63,
+          "require_complete_path": false,
+          "melee_fov": 140,
+          "min_path_time": 0.1,
+          "max_path_time": 0.35
+        }
+      },
+      "manhunt:route_0": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.34,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:search_0": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.3,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:route_1": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.34,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_1",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:search_1": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.3,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_1",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:route_2": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.34,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_2",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:search_2": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.3,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_2",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:route_3": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.34,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_3",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:search_3": {
+        "minecraft:behavior.follow_mob": {
+          "priority": 1,
+          "search_range": 1024,
+          "speed_multiplier": 1.3,
+          "stop_distance": 0.35,
+          "preferred_actor_type": "manhunt:path_node_3",
+          "use_home_position_restriction": false,
+          "filters": {
+            "test": "is_family",
+            "subject": "other",
+            "value": "manhunt_waypoint"
+          }
+        }
+      },
+      "manhunt:gather_wood": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:oak_log",
+            "minecraft:spruce_log",
+            "minecraft:birch_log",
+            "minecraft:jungle_log",
+            "minecraft:acacia_log",
+            "minecraft:dark_oak_log",
+            "minecraft:mangrove_log",
+            "minecraft:cherry_log",
+            "minecraft:crimson_stem",
+            "minecraft:warped_stem"
+          ]
+        }
+      },
+      "manhunt:gather_stone": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:stone",
+            "minecraft:cobblestone",
+            "minecraft:deepslate",
+            "minecraft:cobbled_deepslate",
+            "minecraft:tuff",
+            "minecraft:andesite",
+            "minecraft:diorite",
+            "minecraft:granite",
+            "minecraft:blackstone"
+          ]
+        }
+      },
+      "manhunt:gather_blocks": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:dirt",
+            "minecraft:grass_block",
+            "minecraft:coarse_dirt",
+            "minecraft:rooted_dirt",
+            "minecraft:podzol",
+            "minecraft:mycelium",
+            "minecraft:stone",
+            "minecraft:cobblestone",
+            "minecraft:deepslate",
+            "minecraft:cobbled_deepslate",
+            "minecraft:tuff",
+            "minecraft:andesite",
+            "minecraft:diorite",
+            "minecraft:granite",
+            "minecraft:netherrack",
+            "minecraft:blackstone"
+          ]
+        }
+      },
+      "manhunt:gather_coal": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:coal_ore",
+            "minecraft:deepslate_coal_ore"
+          ]
+        }
+      },
+      "manhunt:gather_iron": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:iron_ore",
+            "minecraft:deepslate_iron_ore",
+            "minecraft:raw_iron_block"
+          ]
+        }
+      },
+      "manhunt:gather_gold": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:gold_ore",
+            "minecraft:deepslate_gold_ore",
+            "minecraft:nether_gold_ore",
+            "minecraft:raw_gold_block"
+          ]
+        }
+      },
+      "manhunt:gather_diamond": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:diamond_ore",
+            "minecraft:deepslate_diamond_ore"
+          ]
+        }
+      },
+      "manhunt:gather_flint": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:gravel"
+          ]
+        }
+      },
+      "manhunt:gather_obsidian": {
+        "minecraft:behavior.move_to_block": {
+          "priority": 1,
+          "speed_multiplier": 1.27,
+          "search_range": 40,
+          "search_height": 28,
+          "goal_radius": 1.55,
+          "tick_interval": 16,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:obsidian"
+          ]
+        }
+      },
+      "manhunt:gather_food": {
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 1,
+          "must_see": true,
+          "reselect_targets": true,
+          "within_radius": 36,
+          "entity_types": [
+            {
+              "filters": {
+                "any_of": [
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "cow"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "pig"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "sheep"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "chicken"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "rabbit"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "mooshroom"
+                  }
+                ]
+              },
+              "max_dist": 36,
+              "must_see": true
+            }
+          ],
+          "scan_interval": 12,
+          "target_acquisition_probability": 1.0
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.24,
+          "track_target": true,
+          "reach_multiplier": 1.0,
+          "cooldown_time": 0.67,
+          "require_complete_path": false,
+          "melee_fov": 140,
+          "min_path_time": 0.1,
+          "max_path_time": 0.35
+        },
+        "minecraft:behavior.move_to_block": {
+          "priority": 3,
+          "speed_multiplier": 1.22,
+          "search_range": 30,
+          "search_height": 14,
+          "goal_radius": 1.55,
+          "tick_interval": 18,
+          "target_selection_method": "nearest",
+          "target_blocks": [
+            "minecraft:hay_block",
+            "minecraft:melon_block",
+            "minecraft:pumpkin",
+            "minecraft:sweet_berry_bush",
+            "minecraft:wheat",
+            "minecraft:carrots",
+            "minecraft:potatoes",
+            "minecraft:beetroot"
+          ]
+        }
+      },
+      "manhunt:gather_combat": {
+        "minecraft:behavior.nearest_attackable_target": {
+          "priority": 1,
+          "must_see": true,
+          "reselect_targets": true,
+          "within_radius": 20,
+          "entity_types": [
+            {
+              "filters": {
+                "any_of": [
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "zombie"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "skeleton"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "spider"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "creeper"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "drowned"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "husk"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "stray"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "witch"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "pillager"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "vindicator"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "enderman"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "slime"
+                  },
+                  {
+                    "test": "is_family",
+                    "subject": "other",
+                    "value": "phantom"
+                  }
+                ]
+              },
+              "max_dist": 20,
+              "must_see": true
+            }
+          ],
+          "scan_interval": 12,
+          "target_acquisition_probability": 1.0
+        },
+        "minecraft:behavior.melee_attack": {
+          "priority": 2,
+          "speed_multiplier": 1.18,
+          "track_target": true,
+          "reach_multiplier": 1.0,
+          "cooldown_time": 0.67,
+          "require_complete_path": false,
+          "melee_fov": 140,
+          "min_path_time": 0.1,
+          "max_path_time": 0.35
+        }
+      }
+    },
+    "components": {
+      "minecraft:type_family": {
+        "family": [
+          "manhunt_hunter",
+          "mob"
+        ]
+      },
+      "minecraft:nameable": {
+        "always_show": true,
+        "allow_name_tag_renaming": false
+      },
+      "minecraft:health": {
+        "value": 20,
+        "max": 20
+      },
+      "minecraft:attack": {
+        "damage": 1
+      },
+      "minecraft:movement": {
+        "value": 0.42,
+        "max": 0.56
+      },
+      "minecraft:underwater_movement": {
+        "value": 0.34
+      },
+      "minecraft:movement.generic": {
+        "max_turn": 85
+      },
+      "minecraft:jump.static": {},
+      "minecraft:can_climb": {},
+      "minecraft:physics": {
+        "has_collision": true,
+        "has_gravity": true
+      },
+      "minecraft:collision_box": {
+        "width": 0.6,
+        "height": 1.8
+      },
+      "minecraft:knockback_resistance": {
+        "value": 0.1
+      },
+      "minecraft:follow_range": {
+        "value": 1024,
+        "max": 1024
+      },
+      "minecraft:persistent": {},
+      "minecraft:tick_world": {
+        "radius": 2,
+        "distance_to_players": 128,
+        "never_despawn": true
+      },
+      "minecraft:inventory": {
+        "inventory_size": 36,
+        "container_type": "inventory",
+        "private": false
+      },
+      "minecraft:equippable": {
+        "slots": [
+          {
+            "slot": 0,
+            "accepted_items": [
+              "minecraft:wooden_sword",
+              "minecraft:stone_sword",
+              "minecraft:iron_sword",
+              "minecraft:diamond_sword",
+              "minecraft:netherite_sword",
+              "minecraft:wooden_pickaxe",
+              "minecraft:stone_pickaxe",
+              "minecraft:iron_pickaxe",
+              "minecraft:diamond_pickaxe",
+              "minecraft:netherite_pickaxe",
+              "minecraft:wooden_axe",
+              "minecraft:stone_axe",
+              "minecraft:iron_axe",
+              "minecraft:diamond_axe",
+              "minecraft:netherite_axe",
+              "minecraft:wooden_shovel",
+              "minecraft:stone_shovel",
+              "minecraft:iron_shovel",
+              "minecraft:diamond_shovel",
+              "minecraft:netherite_shovel",
+              "minecraft:bow",
+              "minecraft:flint_and_steel",
+              "minecraft:torch",
+              "minecraft:bread",
+              "minecraft:cooked_beef",
+              "minecraft:cooked_chicken",
+              "minecraft:cooked_porkchop",
+              "minecraft:cooked_mutton",
+              "minecraft:cooked_rabbit",
+              "minecraft:golden_apple",
+              "minecraft:apple",
+              "minecraft:carrot",
+              "minecraft:potato",
+              "minecraft:cobblestone",
+              "minecraft:cobbled_deepslate",
+              "minecraft:dirt",
+              "minecraft:netherrack",
+              "minecraft:oak_planks",
+              "minecraft:spruce_planks",
+              "minecraft:birch_planks",
+              "minecraft:jungle_planks",
+              "minecraft:acacia_planks",
+              "minecraft:dark_oak_planks",
+              "minecraft:mangrove_planks",
+              "minecraft:cherry_planks",
+              "minecraft:crimson_planks",
+              "minecraft:warped_planks",
+              "minecraft:water_bucket",
+              "minecraft:bucket",
+              "minecraft:shield",
+              "minecraft:baked_potato",
+              "minecraft:sweet_berries",
+              "minecraft:melon_slice",
+              "minecraft:obsidian",
+              "minecraft:beef",
+              "minecraft:porkchop",
+              "minecraft:mutton",
+              "minecraft:chicken",
+              "minecraft:rabbit",
+              "minecraft:beetroot"
+            ]
+          },
+          {
+            "slot": 1,
+            "accepted_items": [
+              "minecraft:shield",
+              "minecraft:water_bucket",
+              "minecraft:bucket"
+            ]
+          },
+          {
+            "slot": 2,
+            "accepted_items": [
+              "minecraft:leather_helmet",
+              "minecraft:chainmail_helmet",
+              "minecraft:golden_helmet",
+              "minecraft:iron_helmet",
+              "minecraft:diamond_helmet",
+              "minecraft:netherite_helmet",
+              "minecraft:turtle_helmet",
+              "minecraft:carved_pumpkin"
+            ]
+          },
+          {
+            "slot": 3,
+            "accepted_items": [
+              "minecraft:leather_chestplate",
+              "minecraft:chainmail_chestplate",
+              "minecraft:golden_chestplate",
+              "minecraft:iron_chestplate",
+              "minecraft:diamond_chestplate",
+              "minecraft:netherite_chestplate",
+              "minecraft:elytra"
+            ]
+          },
+          {
+            "slot": 4,
+            "accepted_items": [
+              "minecraft:leather_leggings",
+              "minecraft:chainmail_leggings",
+              "minecraft:golden_leggings",
+              "minecraft:iron_leggings",
+              "minecraft:diamond_leggings",
+              "minecraft:netherite_leggings"
+            ]
+          },
+          {
+            "slot": 5,
+            "accepted_items": [
+              "minecraft:leather_boots",
+              "minecraft:chainmail_boots",
+              "minecraft:golden_boots",
+              "minecraft:iron_boots",
+              "minecraft:diamond_boots",
+              "minecraft:netherite_boots"
+            ]
+          }
+        ]
+      },
+      "minecraft:equip_item": {
+        "can_wear_armor": true
+      },
+      "minecraft:behavior.float": {
+        "priority": 0,
+        "chance_per_tick_to_float": 0.95
+      },
+      "minecraft:behavior.pickup_items": {
+        "priority": 6,
+        "can_pickup_any_item": true,
+        "can_pickup_to_hand_or_equipment": false,
+        "pickup_based_on_chance": false,
+        "goal_radius": 2,
+        "max_dist": 20,
+        "speed_multiplier": 1.15
+      },
+      "minecraft:behavior.look_at_player": {
+        "priority": 9,
+        "look_distance": 24,
+        "probability": 0.08,
+        "look_time": {
+          "min": 1,
+          "max": 2
+        }
+      },
+      "minecraft:behavior.random_look_around": {
+        "priority": 10
+      },
+      "minecraft:annotation.open_door": {},
+      "minecraft:navigation.walk": {
+        "can_walk": true,
+        "can_swim": true,
+        "is_amphibious": true,
+        "can_sink": false,
+        "can_float": true,
+        "can_breach": true,
+        "can_jump": true,
+        "can_path_from_air": true,
+        "can_path_over_water": false,
+        "can_path_over_lava": false,
+        "can_walk_in_lava": false,
+        "can_pass_doors": true,
+        "can_open_doors": true,
+        "can_break_doors": true,
+        "avoid_water": false,
+        "avoid_damage_blocks": true,
+        "using_door_annotation": true,
+        "blocks_to_avoid": [
+          {
+            "name": "minecraft:lava"
+          },
+          {
+            "name": "minecraft:fire"
+          },
+          {
+            "name": "minecraft:soul_fire"
+          },
+          {
+            "name": "minecraft:magma"
+          },
+          {
+            "name": "minecraft:cactus"
+          },
+          {
+            "name": "minecraft:powder_snow"
+          }
+        ]
+      }
+    },
+    "events": {
+      "minecraft:entity_spawned": {
+        "add": {
+          "component_groups": [
+            "manhunt:idle"
+          ]
+        }
+      },
+      "manhunt:idle": {
+        "remove": {
+          "component_groups": [
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:idle"
+          ]
+        }
+      },
+      "manhunt:chase": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:chase"
+          ]
+        }
+      },
+      "manhunt:defend": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:defend"
+          ]
+        }
+      },
+      "manhunt:route_0": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:route_0"
+          ]
+        }
+      },
+      "manhunt:search_0": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:search_0"
+          ]
+        }
+      },
+      "manhunt:route_1": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:route_1"
+          ]
+        }
+      },
+      "manhunt:search_1": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:search_1"
+          ]
+        }
+      },
+      "manhunt:route_2": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:route_2"
+          ]
+        }
+      },
+      "manhunt:search_2": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:search_2"
+          ]
+        }
+      },
+      "manhunt:route_3": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:route_3"
+          ]
+        }
+      },
+      "manhunt:search_3": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:search_3"
+          ]
+        }
+      },
+      "manhunt:gather_wood": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_wood"
+          ]
+        }
+      },
+      "manhunt:gather_stone": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_stone"
+          ]
+        }
+      },
+      "manhunt:gather_blocks": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_blocks"
+          ]
+        }
+      },
+      "manhunt:gather_coal": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_coal"
+          ]
+        }
+      },
+      "manhunt:gather_iron": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_iron"
+          ]
+        }
+      },
+      "manhunt:gather_gold": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_gold"
+          ]
+        }
+      },
+      "manhunt:gather_diamond": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_diamond"
+          ]
+        }
+      },
+      "manhunt:gather_flint": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_flint"
+          ]
+        }
+      },
+      "manhunt:gather_obsidian": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_food",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_obsidian"
+          ]
+        }
+      },
+      "manhunt:gather_food": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_combat"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_food"
+          ]
+        }
+      },
+      "manhunt:gather_combat": {
+        "remove": {
+          "component_groups": [
+            "manhunt:idle",
+            "manhunt:chase",
+            "manhunt:defend",
+            "manhunt:route_0",
+            "manhunt:search_0",
+            "manhunt:route_1",
+            "manhunt:search_1",
+            "manhunt:route_2",
+            "manhunt:search_2",
+            "manhunt:route_3",
+            "manhunt:search_3",
+            "manhunt:gather_wood",
+            "manhunt:gather_stone",
+            "manhunt:gather_blocks",
+            "manhunt:gather_coal",
+            "manhunt:gather_iron",
+            "manhunt:gather_gold",
+            "manhunt:gather_diamond",
+            "manhunt:gather_flint",
+            "manhunt:gather_obsidian",
+            "manhunt:gather_food"
+          ]
+        },
+        "add": {
+          "component_groups": [
+            "manhunt:gather_combat"
+          ]
+        }
+      }
+    }
+  }
 }

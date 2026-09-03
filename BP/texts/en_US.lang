@@ -1,0 +1,8 @@
+pack.name=Manhunt AI Bot v1.0.3 [BP]
+pack.description=Adaptive Hunter Overhaul with coordinated hunters, route memory, survival progression, portals, combat and diagnostics.
+item.manhunt:hunter_compass=§6Hunter Compass
+entity.manhunt:hunter.name=Hunter
+entity.manhunt:path_node.name=
+entity.manhunt:path_node_1.name=
+entity.manhunt:path_node_2.name=
+entity.manhunt:path_node_3.name=

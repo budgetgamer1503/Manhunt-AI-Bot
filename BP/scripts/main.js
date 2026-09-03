@@ -1,736 +1,105 @@
-/*
- * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
- * Unauthorized reproduction or distribution is strictly prohibited.
- */
-
-import { world, system, EffectTypes, EquipmentSlot } from "@minecraft/server";
+import { system, world } from "@minecraft/server";
+import { COMPASS_ID, HUNTER_ID, VERSION, WAYPOINT_IDS } from "./constants.js";
 import {
-    showSpawnMenu, clearPlayerConfig, rememberLastUsedConfig
-} from "./ui.js";
-import { WEAPON_DAMAGE, capturePlayerInventoryProfile, describeInventoryMode } from "./inventory.js";
-import {
-    getHunter, getHunters, getTarget, getInventory, getInventoryForHunter, isActive, isRespawning,
-    spawn, despawn, respawn, canRespawn, getDeathCount,
-    setTarget, setBed, storeDeathLocation, resolveDeathPosition,
-    cachePosition, cleanupOrphans, cancelRespawn,
-    getEquipmentPersistence, saveInventoryForRespawn, clearSavedInventory,
-    attemptBedPlacementNearPortal, getCurrentConfigSnapshot,
-    getTargets, addTarget, removeTarget, clearTargets
-} from "./entity_manager.js";
-import { startAI, stopAI, stopHunterAI, forceChaseMode, triggerAttack, rollCrit, handleDamage } from "./state_machine.js";
-import { startHunt, endHunt, recordHunterDeath, recordRunnerDeath, checkTimeLimit, loadHuntState, isHuntActive } from "./win_conditions.js";
-import { startStats, endStats, recordDamageDealt, recordDamageTaken, recordHunterDeath as statsRecordHunterDeath, recordRunnerDeath as statsRecordRunnerDeath } from "./stats.js";
-import { resetHuntProgress, recordHunterDamageTaken, checkEndOfHuntAchievements } from "./achievements.js";
-import { info, debug, error } from "./logger.js";
+  ensureCompass,
+  handleEntityDeath,
+  handleEntityHurt,
+  initializeHuntRuntime,
+  tickHunt
+} from "./hunt.js";
+import { initializeState, isStateReady, migrateLegacyPlayerConfig } from "./state.js";
+import { showMainMenu } from "./ui.js";
 
-const MODULE = "main";
-const CLASS_COLORS = {
-    default: "§a",
-    knight: "§6",
-    archer: "§b",
-    saboteur: "§d"
-};
-let spawnSequenceActive = false;
-let bedScanId = null;
-let bedScanCounter = 0;
-let loadoutSyncId = null;
-let compassTrackingId = null;
-let timeLimitCheckId = null;
+let runtimeReady = false;
+let initializationQueued = false;
+let announcedLoad = false;
 
-loadHuntState();
+function initializeRuntime() {
+  if (runtimeReady || initializationQueued) return;
+  initializationQueued = true;
+  system.run(() => {
+    initializationQueued = false;
+    if (runtimeReady) return;
+    try {
+      initializeState();
+      initializeHuntRuntime();
+      runtimeReady = true;
+      for (const player of world.getPlayers()) {
+        try { migrateLegacyPlayerConfig(player); } catch {}
+        try { ensureCompass(player); } catch {}
+      }
+      if (!announcedLoad) {
+        announcedLoad = true;
+        console.warn(`[Manhunt AI Bot] Behavior Pack v${VERSION} loaded.`);
+      }
+    } catch (error) {
+      console.warn(`[Manhunt AI Bot] Initialization deferred: ${error}`);
+      system.runTimeout(initializeRuntime, 20);
+    }
+  });
+}
 
-system.runTimeout(() => {
-    cleanupOrphans();
-}, 40);
-
-system.run(() => {
-    info(MODULE, "Manhunt Bot v1.0.0 loaded.");
-    world.sendMessage("§eManhunt Bot v1.0.0 §7loaded. Use the §eHunter Compass §7to begin.");
-});
+// Event subscriptions are valid during early execution. World-state work is deferred.
+try {
+  world.afterEvents.worldLoad.subscribe(() => initializeRuntime());
+} catch {
+  // The one-tick fallback below covers runtimes where the event is unavailable.
+}
 
 world.afterEvents.itemUse.subscribe((event) => {
-    const player = event.source;
-    const item = event.itemStack;
-    if (!item || item.typeId !== "manhunt:hunter_compass") return;
-
-    if (spawnSequenceActive) {
-        player.onScreenDisplay.setActionBar("§eSpawn sequence already in progress.");
-        return;
+  if (event.itemStack?.typeId !== COMPASS_ID) return;
+  system.run(() => {
+    if (!runtimeReady || !isStateReady()) {
+      initializeRuntime();
+      try { event.source.sendMessage("§eManhunt AI Bot is initializing. Use the compass again in one second."); } catch {}
+      return;
     }
-
-    system.run(() => {
-        showSpawnMenu(player, {
-            onSpawn: onSpawnConfirmed,
-            onQuickRestart: onQuickRestartRequested,
-            onDespawn: onDespawnRequested
-        }, isActive());
-    });
+    showMainMenu(event.source).catch((error) => console.warn(`[Manhunt AI Bot] Menu error: ${error}`));
+  });
 });
 
-function onSpawnConfirmed(player, config) {
-    if (isActive()) {
-        player.onScreenDisplay.setActionBar("§cA hunter is already active.");
-        return;
+world.afterEvents.playerSpawn.subscribe((event) => {
+  system.runTimeout(() => {
+    if (!runtimeReady) initializeRuntime();
+    if (!runtimeReady || !isStateReady()) return;
+    try { migrateLegacyPlayerConfig(event.player); } catch {}
+    try { ensureCompass(event.player); } catch {}
+    if (event.initialSpawn) {
+      try { event.player.sendMessage(`§eManhunt AI Bot v${VERSION} loaded. Use the Hunter Compass.`); } catch {}
     }
-    beginSpawnSequence(player, config);
-}
-
-function onQuickRestartRequested(player, config) {
-    if (isActive()) {
-        player.onScreenDisplay.setActionBar("§cA hunter is already active.");
-        return;
-    }
-    beginSpawnSequence(player, config);
-}
-
-function onDespawnRequested(player) {
-    if (!isActive() && !isRespawning()) return;
-    if (isRespawning()) {
-        cancelRespawn("manual despawn requested");
-    }
-    despawn(true);
-    stopAI();
-    stopAllSystems();
-    player.sendMessage("§7The hunter has been despawned.");
-}
-
-function beginSpawnSequence(player, config) {
-    if (spawnSequenceActive) return;
-    spawnSequenceActive = true;
-    rememberLastUsedConfig(player.id, config);
-
-    try {
-        const playerLoadout = capturePlayerInventoryProfile(player);
-
-        try {
-            const inventory = player.getComponent("minecraft:inventory");
-            if (inventory?.container) inventory.container.clearAll();
-        } catch (_) { }
-
-        try {
-            const equippable = player.getComponent("minecraft:equippable");
-            if (equippable) {
-                for (const slot of ["Head", "Chest", "Legs", "Feet", "Offhand"]) {
-                    try { equippable.setEquipment(slot, undefined); } catch (_) { }
-                }
-            }
-        } catch (_) { }
-
-        try {
-            const regeneration = EffectTypes.get("regeneration");
-            const saturation = EffectTypes.get("saturation");
-            if (regeneration) player.addEffect(regeneration, 200, { amplifier: 4, showParticles: true });
-            if (saturation) player.addEffect(saturation, 200, { amplifier: 4, showParticles: false });
-        } catch (_) { }
-
-        let countdown = 10;
-        showCountdown(player, countdown);
-
-        const countdownId = system.runInterval(() => {
-            countdown--;
-            if (countdown > 0) {
-                showCountdown(player, countdown);
-                return;
-            }
-
-            if (countdown === 0) {
-                showHuntBegins(player, config.name);
-                const hunter = spawn(player, config, playerLoadout);
-
-                if (hunter) {
-                    const hunterInventory = getInventory();
-                    if (hunterInventory) {
-                        try { hunterInventory.equipBest(hunter); } catch (_) { }
-                    }
-
-                    startHunt(config);
-                    resetHuntProgress();
-                    startStats();
-                    startAI();
-                    startBedScanning();
-                    startLoadoutSync();
-                    startCompassTracking();
-                    startTimeLimitCheck();
-
-                    player.sendMessage(`§c§l${config.name} §r§7has spawned and is hunting you.`);
-                    player.sendMessage(`§7AI Level: §6${config.aiLevel}`);
-                    player.sendMessage(`§7Inventory Mode: §b${describeInventoryMode(config.inventoryMode)}`);
-                    player.sendMessage(`§7Win Condition: §6${config.winCondition || "Infinite"}`);
-                    player.sendMessage("§7Tip: Sneak to hide from the tracker.");
-                } else {
-                    player.sendMessage("§cFailed to spawn hunter. Try again.");
-                }
-
-                system.clearRun(countdownId);
-                spawnSequenceActive = false;
-            }
-        }, 20);
-    } catch (_) {
-        spawnSequenceActive = false;
-        player.sendMessage("§cError during spawn sequence. Try again.");
-    }
-}
-
-function showCountdown(player, secondsLeft) {
-    try {
-        let color = "§a";
-        if (secondsLeft <= 3) color = "§c§l";
-        else if (secondsLeft <= 6) color = "§e";
-
-        player.onScreenDisplay.setTitle(`${color}${secondsLeft}`, {
-            fadeInDuration: 0,
-            fadeOutDuration: 5,
-            stayDuration: 15,
-            subtitle: "§7The hunter is coming..."
-        });
-    } catch (_) { }
-}
-
-function showHuntBegins(player, name) {
-    try {
-        player.onScreenDisplay.setTitle("§4§lTHE HUNT BEGINS", {
-            fadeInDuration: 5,
-            fadeOutDuration: 20,
-            stayDuration: 40,
-            subtitle: `§c${name}`
-        });
-    } catch (_) { }
-}
-
-system.runInterval(() => {
-    if (!isActive()) return;
-    cachePosition();
-}, 10);
+  }, 20);
+});
 
 world.afterEvents.entityDie.subscribe((event) => {
-    const entity = event.deadEntity;
-    if (!entity) return;
-
-    try {
-        if (entity.typeId === "manhunt:hunter" && entity.hasTag("hunter_active")) {
-            handleHunterDeath(entity);
-            return;
-        }
-
-        if (entity.typeId === "minecraft:player") {
-            handlePlayerDeath(entity);
-        }
-    } catch (_) { }
+  if (!runtimeReady) return;
+  // Read death-event entities before the engine invalidates them on a later tick.
+  try { handleEntityDeath(event); }
+  catch (error) { console.warn(`[Manhunt AI Bot] Death handler error: ${error}`); }
 });
-
-function handleHunterDeath(entity) {
-    const death = resolveDeathPosition(entity);
-    storeDeathLocation(death.pos, death.dimId);
-
-    const target = getTarget();
-    const inventory = getInventoryForHunter(entity);
-    if (inventory) {
-        if (getEquipmentPersistence()) {
-            saveInventoryForRespawn(entity, inventory);
-        } else {
-            try {
-                const dim = world.getDimension(death.dimId);
-                inventory.dropAll(dim, death.pos);
-            } catch (_) {
-                try { inventory.dropAll(entity.dimension, death.pos); } catch (_) { }
-            }
-        }
-    }
-
-    try {
-        entity.runCommand("replaceitem entity @s slot.weapon.offhand 0 air 0");
-    } catch (_) { }
-
-    statsRecordHunterDeath();
-
-    const result = recordHunterDeath();
-    if (result.huntOver) {
-        if (target) {
-            try {
-                target.onScreenDisplay.setTitle("§a§lHUNTER DEFEATED!", {
-                    fadeInDuration: 5,
-                    fadeOutDuration: 20,
-                    stayDuration: 60,
-                    subtitle: "§7You survived the manhunt."
-                });
-                target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
-
-                const currentConfig = getCurrentConfigSnapshot();
-                const squadSize = getHunters().length;
-                checkEndOfHuntAchievements(target, "runner", squadSize, currentConfig.aiLevel);
-            } catch (_) { }
-        }
-        endStats("runner", result.reason);
-        stopAI();
-        stopAllSystems();
-        system.runTimeout(() => {
-            try { despawn(false); } catch (_) { }
-        }, 10);
-        return;
-    }
-
-    if (!canRespawn()) {
-        if (target) {
-            try {
-                target.onScreenDisplay.setTitle("§a§lHUNTER DEFEATED!", {
-                    fadeInDuration: 5,
-                    fadeOutDuration: 20,
-                    stayDuration: 60,
-                    subtitle: "§7You survived the manhunt."
-                });
-                target.sendMessage("§aThe hunter has been defeated. §7You won the manhunt.");
-
-                const currentConfig = getCurrentConfigSnapshot();
-                const squadSize = getHunters().length;
-                checkEndOfHuntAchievements(target, "runner", squadSize, currentConfig.aiLevel);
-            } catch (_) { }
-        }
-        endStats("runner", "Hunter could not respawn");
-        stopAI();
-        stopAllSystems();
-        system.runTimeout(() => {
-            try { despawn(false); } catch (_) { }
-        }, 10);
-        return;
-    }
-
-    const hData = getHunters().find(h => h.entity.id === entity.id);
-    const hName = hData ? hData.name : "Hunter";
-    const deathNum = hData ? hData.deathCount + 1 : getDeathCount() + 1;
-
-    if (target) {
-        try {
-            target.onScreenDisplay.setTitle("§e§lHUNTER KILLED!", {
-                fadeInDuration: 5,
-                fadeOutDuration: 20,
-                stayDuration: 60,
-                subtitle: `§7Respawning... §8(${hName} Death #${deathNum})`
-            });
-            target.sendMessage(`§e${hName} killed. §7Respawn sequence started.`);
-        } catch (_) { }
-    }
-
-    stopHunterAI(entity);
-
-    respawn(entity, (newHunter) => {
-        if (newHunter && target) {
-            try {
-                setTarget(target);
-                startAI();
-            } catch (_) { }
-            return;
-        }
-
-        if (target) {
-            try {
-                target.onScreenDisplay.setTitle("§a§lHUNTER DEFEATED!", {
-                    fadeInDuration: 5,
-                    fadeOutDuration: 20,
-                    stayDuration: 60,
-                    subtitle: `§7${hName} failed to respawn.`
-                });
-                target.sendMessage(`§a${hName} has been permanently defeated.`);
-            } catch (_) { }
-        }
-
-        const aliveHunters = getHunters().filter(h => h.entity && h.entity.isValid());
-        if (aliveHunters.length === 0) {
-            endStats("runner", "All hunters failed to respawn");
-            stopAI();
-            stopAllSystems();
-            system.runTimeout(() => {
-                try { despawn(false); } catch (_) { }
-            }, 10);
-        }
-    });
-}
-
-function handlePlayerDeath(entity) {
-    const target = getTarget();
-    if (!target || target.id !== entity.id) return;
-
-    statsRecordRunnerDeath();
-
-    const result = recordRunnerDeath(entity.nameTag || "Player");
-    if (result.huntOver) {
-        endStats("hunter", result.reason);
-    }
-
-    system.runTimeout(() => {
-        if (isRespawning()) {
-            cancelRespawn("target player died during respawn");
-        }
-
-        despawn(false);
-        stopAI();
-        stopAllSystems();
-
-        try {
-            world.sendMessage(`§c${entity.nameTag || "Player"} §7was killed by the hunter. The manhunt is over.`);
-            
-            const currentConfig = getCurrentConfigSnapshot();
-            const squadSize = getHunters().length;
-            checkEndOfHuntAchievements(entity, "hunter", squadSize, currentConfig.aiLevel);
-        } catch (_) { }
-    }, 20);
-}
 
 world.afterEvents.entityHurt.subscribe((event) => {
-    const entity = event.hurtEntity;
-    if (!entity) return;
+  if (!runtimeReady) return;
+  try { handleEntityHurt(event); }
+  catch (error) { console.warn(`[Manhunt AI Bot] Hurt handler error: ${error}`); }
+});
 
+world.afterEvents.entitySpawn.subscribe((event) => {
+  if (event.entity.typeId !== HUNTER_ID && !WAYPOINT_IDS.includes(event.entity.typeId)) return;
+  system.run(() => {
     try {
-        if (entity.typeId === "manhunt:hunter" && entity.hasTag("hunter_active")) {
-            const damage = event.damage;
-            recordDamageTaken(damage);
-
-            const inventory = getInventoryForHunter(entity);
-            if (inventory) {
-                const cause = event.damageSource?.cause ?? "none";
-                const attacker = event.damageSource?.damagingEntity ?? undefined;
-                handleDamage(entity, inventory, cause, attacker);
-            }
-            forceChaseMode();
-        }
-
-        if (entity.typeId === "minecraft:player") {
-            const attacker = event.damageSource?.damagingEntity;
-            if (attacker && attacker.typeId === "manhunt:hunter" && attacker.hasTag("hunter_active")) {
-                recordHunterDamageTaken();
-            }
-        }
-    } catch (_) { }
+      if (WAYPOINT_IDS.includes(event.entity.typeId)) event.entity.addTag("manhunt_waypoint_active");
+    } catch {}
+  });
 });
 
-world.afterEvents.entityHitEntity.subscribe((event) => {
-    const attacker = event.damagingEntity;
-    const target = event.hitEntity;
-    if (!attacker || !target) return;
+// This callback executes after startup early-execution has ended.
+system.runTimeout(initializeRuntime, 1);
 
-    try {
-        if (attacker.typeId === "manhunt:hunter" && attacker.hasTag("hunter_active")) {
-            triggerAttack(attacker);
-
-            const equippable = attacker.getComponent("minecraft:equippable");
-            if (equippable) {
-                const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
-                if (mainhand && WEAPON_DAMAGE[mainhand.typeId]) {
-                    const weaponDamage = WEAPON_DAMAGE[mainhand.typeId];
-                    let extraDamage = weaponDamage - 3;
-
-                    const { isCrit, multiplier } = rollCrit(attacker);
-                    if (isCrit && extraDamage > 0) {
-                        extraDamage = Math.ceil(extraDamage * multiplier);
-                        try {
-                            const targetPos = target.location;
-                            attacker.dimension.spawnParticle("minecraft:critical_hit_emitter", {
-                                x: targetPos.x,
-                                y: targetPos.y + 1,
-                                z: targetPos.z
-                            });
-                        } catch (_) { }
-                    }
-
-                    if (extraDamage > 0) {
-                        try {
-                            target.applyDamage(extraDamage, {
-                                cause: "entityAttack",
-                                damagingEntity: attacker
-                            });
-                        } catch (_) { }
-                    }
-
-                    recordDamageDealt(weaponDamage + extraDamage);
-                }
-            }
-        }
-    } catch (_) { }
-});
-
-function startBedScanning() {
-    if (bedScanId !== null) return;
-
-    bedScanId = system.runInterval(() => {
-        const hunter = getHunter();
-        const target = getTarget();
-
-        let scanPos = null;
-        let scanDim = null;
-        if (hunter) {
-            scanPos = hunter.location;
-            scanDim = hunter.dimension;
-        } else if (target) {
-            scanPos = target.location;
-            scanDim = target.dimension;
-        }
-
-        if (!scanPos || !scanDim) return;
-
-        try {
-            const dimId = scanDim.id.replace("minecraft:", "");
-            const baseX = Math.floor(scanPos.x);
-            const baseY = Math.floor(scanPos.y);
-            const baseZ = Math.floor(scanPos.z);
-            for (let x = -3; x <= 3; x++) {
-                for (let y = -1; y <= 2; y++) {
-                    for (let z = -3; z <= 3; z++) {
-                        const blockPos = {
-                            x: baseX + x,
-                            y: baseY + y,
-                            z: baseZ + z
-                        };
-
-                        try {
-                            const block = scanDim.getBlock(blockPos);
-                            if (block?.typeId?.includes("bed")) {
-                                setBed(blockPos, dimId);
-                                return;
-                            }
-                        } catch (_) { }
-                    }
-                }
-            }
-
-            bedScanCounter++;
-            if (bedScanCounter >= 5) {
-                bedScanCounter = 0;
-                attemptBedPlacementNearPortal();
-            }
-        } catch (_) { }
-    }, 200);
-}
-
-function stopBedScanning() {
-    if (bedScanId === null) return;
-    system.clearRun(bedScanId);
-    bedScanId = null;
-}
-
-function startCompassTracking() {
-    if (compassTrackingId !== null) return;
-
-    compassTrackingId = system.runInterval(() => {
-        const hunters = getHunters();
-        const target = getTarget();
-        if (hunters.length === 0 || !target) return;
-
-        try {
-            const equippable = target.getComponent("minecraft:equippable");
-            if (equippable) {
-                const mainhand = equippable.getEquipment(EquipmentSlot.Mainhand);
-                if (mainhand?.typeId === "manhunt:hunter_compass") {
-                    const tPos = target.location;
-                    const trackingStrings = [];
-
-                    hunters.forEach((h, i) => {
-                        if (!h.entity?.isValid?.()) return;
-                        try {
-                            const hPos = h.entity.location;
-                            const dx = hPos.x - tPos.x;
-                            const dz = hPos.z - tPos.z;
-                            const distSq = dx * dx + dz * dz;
-                            const dist = Math.sqrt(distSq);
-                            const arrow = getDirectionArrow(tPos, hPos);
-                            const classColor = CLASS_COLORS[h.classId] ?? "§7";
-                            const distColor = distSq < 900 ? "§c" : distSq < 6400 ? "§e" : "§a";
-                            
-                            const shortClass = h.classId ? h.classId[0].toUpperCase() : "H";
-                            trackingStrings.push(`${classColor}${shortClass}-${h.name}: ${distColor}${Math.floor(dist)}m ${arrow}`);
-                        } catch (_) {}
-                    });
-
-                    if (trackingStrings.length > 0) {
-                        target.onScreenDisplay.setActionBar(trackingStrings.join(" §7| "));
-                    }
-                }
-            }
-        } catch (_) { }
-    }, 10);
-}
-
-function getDirectionArrow(from, to) {
-    const dx = to.x - from.x;
-    const dz = to.z - from.z;
-    const angle = Math.atan2(dx, dz) * (180 / Math.PI);
-
-    if (angle >= -22.5 && angle < 22.5) return "\u2191";
-    if (angle >= 22.5 && angle < 67.5) return "\u2197";
-    if (angle >= 67.5 && angle < 112.5) return "\u2192";
-    if (angle >= 112.5 && angle < 157.5) return "\u2198";
-    if (angle >= 157.5 || angle < -157.5) return "\u2193";
-    if (angle >= -157.5 && angle < -112.5) return "\u2199";
-    if (angle >= -112.5 && angle < -67.5) return "\u2190";
-    if (angle >= -67.5 && angle < -22.5) return "\u2196";
-    return "\u25CF";
-}
-
-function stopCompassTracking() {
-    if (compassTrackingId === null) return;
-    system.clearRun(compassTrackingId);
-    compassTrackingId = null;
-}
-
-function startTimeLimitCheck() {
-    if (timeLimitCheckId !== null) return;
-
-    timeLimitCheckId = system.runInterval(() => {
-        const result = checkTimeLimit();
-        if (result.huntOver) {
-            const target = getTarget();
-            if (target) {
-                try {
-                    target.onScreenDisplay.setTitle("§a§lTIME'S UP!", {
-                        fadeInDuration: 5,
-                        fadeOutDuration: 20,
-                        stayDuration: 60,
-                        subtitle: "§7You survived the time limit!"
-                    });
-                    target.sendMessage("§aYou survived! §7The time limit has expired.");
-                } catch (_) { }
-            }
-            endStats("runner", result.reason);
-            stopAI();
-            stopAllSystems();
-            system.runTimeout(() => {
-                try { despawn(false); } catch (_) { }
-            }, 10);
-        }
-    }, 40);
-}
-
-function stopTimeLimitCheck() {
-    if (timeLimitCheckId === null) return;
-    system.clearRun(timeLimitCheckId);
-    timeLimitCheckId = null;
-}
-
-function startLoadoutSync() {
-    if (loadoutSyncId !== null) return;
-
-    loadoutSyncId = system.runInterval(() => {
-        if (isRespawning()) return;
-
-        const hunters = getHunters();
-        const target = getTarget();
-        if (hunters.length === 0 || !target) return;
-
-        const currentConfig = getCurrentConfigSnapshot();
-        if (currentConfig.inventoryMode !== "player_share") return;
-
-        const playerLoadout = capturePlayerInventoryProfile(target);
-
-        for (const h of hunters) {
-            if (!h.entity || !h.inventory) continue;
-            
-            const config = {
-                name: h.name,
-                skinId: h.skinId,
-                classId: h.classId,
-                aiLevel: h.aiLevel,
-                inventoryMode: currentConfig.inventoryMode,
-                creatorKitId: currentConfig.creatorKitId
-            };
-            h.inventory.refreshForConfig(config, playerLoadout, {
-                replaceExisting: false,
-                preserveUpgrades: true
-            });
-            try { h.inventory.equipBest(h.entity); } catch (_) { }
-        }
-    }, 40);
-}
-
-function stopLoadoutSync() {
-    if (loadoutSyncId === null) return;
-    system.clearRun(loadoutSyncId);
-    loadoutSyncId = null;
-}
-
-world.afterEvents.playerLeave.subscribe((event) => {
-    const target = getTarget();
-    if (target) {
-        try {
-            if (target.name === event.playerName) {
-                if (isRespawning()) {
-                    cancelRespawn("target player left during respawn");
-                }
-                despawn(false);
-                stopAI();
-                stopAllSystems();
-                world.sendMessage(`§7${event.playerName} left the game. The hunter has been despawned.`);
-            }
-        } catch (_) {
-            if (isRespawning()) {
-                cancelRespawn("target player left during respawn");
-            }
-            despawn(false);
-            stopAI();
-            stopAllSystems();
-        }
-    }
-
-    clearPlayerConfig(event.playerId ?? "");
-});
-
-world.afterEvents.playerDimensionChange.subscribe((event) => {
-    const player = event.player;
-    const target = getTarget();
-    if (!target || player.id !== target.id) return;
-
-    debug(MODULE, `Target changed dimension: ${event.fromDimension.id} -> ${event.toDimension.id}`);
-
-    system.runTimeout(() => {
-        const hunters = getHunters();
-        if (hunters.length === 0 || !isActive()) return;
-
-        try {
-            const toDimension = event.toDimension;
-            const tPos = player.location;
-            let teleportedCount = 0;
-
-            hunters.forEach((h, i) => {
-                if (!h.entity) return;
-                try {
-                    const _ = h.entity.location;
-
-                    let spawnY = tPos.y;
-                    const angle = (Math.random() * Math.PI * 2) + (i * (Math.PI * 2 / hunters.length));
-                    const dist = 8 + Math.random() * 5;
-                    const newX = tPos.x + Math.cos(angle) * dist;
-                    const newZ = tPos.z + Math.sin(angle) * dist;
-
-                    try {
-                        for (let y = Math.floor(tPos.y) + 10; y >= Math.max(tPos.y - 20, -64); y--) {
-                            const block = toDimension.getBlock({ x: Math.floor(newX), y, z: Math.floor(newZ) });
-                            if (block && block.typeId !== "minecraft:air" && block.typeId !== "minecraft:water") {
-                                spawnY = y + 1;
-                                break;
-                            }
-                        }
-                    } catch (_) {
-                        spawnY = tPos.y;
-                    }
-
-                    h.entity.teleport(
-                        { x: newX, y: spawnY, z: newZ },
-                        { dimension: toDimension }
-                    );
-                    teleportedCount++;
-                } catch (_) {}
-            });
-
-            if (teleportedCount > 0) {
-                debug(MODULE, `${teleportedCount} hunters followed target to ${toDimension.id}`);
-                target.sendMessage(teleportedCount === 1 ? "§cThe hunter followed you through the portal!" : "§cThe hunters followed you through the portal!");
-            }
-        } catch (e) {
-            error(MODULE, "Failed to follow target through portal", e);
-        }
-    }, 60);
-});
-
-function stopAllSystems() {
-    stopBedScanning();
-    stopLoadoutSync();
-    stopCompassTracking();
-    stopTimeLimitCheck();
-}
+system.runInterval(() => {
+  if (!runtimeReady || !isStateReady()) {
+    initializeRuntime();
+    return;
+  }
+  try { tickHunt(); }
+  catch (error) { console.warn(`[Manhunt AI Bot] Brain loop error: ${error}`); }
+}, 1);

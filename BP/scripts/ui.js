@@ -1,990 +1,398 @@
-/*
- * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
- * Unauthorized reproduction or distribution is strictly prohibited.
- */
-
-import { system, world } from "@minecraft/server";
-import { ActionFormData, ModalFormData } from "@minecraft/server-ui";
+import { system } from "@minecraft/server";
+import { ActionFormData, MessageFormData, ModalFormData } from "@minecraft/server-ui";
 import {
-    getAILevel, getBed, getDeathCount, getEquipmentPersistence,
-    getHunter, getHunters, getLastRespawnStatus, getRespawnDebug, getTarget,
-    isActive, isRespawning, getInventory
-} from "./entity_manager.js";
-import { getAIState } from "./state_machine.js";
-import { INVENTORY_MODES, describeInventoryMode, capturePlayerInventoryProfile } from "./inventory.js";
-import { getCreatorKitChoices, DEFAULT_CREATOR_KIT_ID } from "./kits.js";
-import { WIN_CONDITIONS, getHuntState, getRemainingTimeMinutes, getRemainingLives, getRemainingKills } from "./win_conditions.js";
-import { getScalingDescription } from "./difficulty_scaling.js";
-import { serverForm } from "./serverForm.js";
-import { ACHIEVEMENTS, getUnlockedAchievements } from "./achievements.js";
-const CONFIG_PROP = "manhunt:last_config";
-const SKIN_OPTIONS = [
-    { id: 0, name: "Steve", description: "Classic Steve skin" },
-    { id: 1, name: "Alex", description: "Classic Alex skin" },
-    { id: 2, name: "Zombie", description: "Zombie hunter skin" },
-    { id: 3, name: "Skeleton", description: "Skeleton hunter skin" },
-    { id: 4, name: "Creeper", description: "Creeper hunter skin" },
-    { id: 5, name: "Custom Skin", description: "Reserved custom skin slot" },
-    { id: 6, name: "Dream", description: "Green hoodie and white mask" },
-    { id: 7, name: "Technoblade", description: "Pink skin with crown" }
-];
-const AI_LEVELS = [
-    { id: "easy", name: "Easy", description: "Lower pressure, slower reactions, safer retreats" },
-    { id: "normal", name: "Normal", description: "Current baseline behavior" },
-    { id: "expert", name: "Expert", description: "Higher pressure, faster reactions, stronger combat" }
-];
-const PREP_BEHAVIORS = [
-    { id: "hybrid", name: "Hybrid", description: "Hunter can gather, craft, and upgrade gear during chase." },
-    { id: "pure_chase", name: "Pure Chase", description: "Hunter never stops to gather — relentless pursuit." },
-    { id: "aggressive", name: "Aggressive", description: "Shorter prep phases, faster gathering, more combat." }
-];
-const playerConfigs = new Map();
-const lastUsedConfigs = new Map();
-function getDefaultConfig() {
-    return {
-        name: "Hunter",
-        skinId: 0,
-        enableTaunts: true,
-        boatHandling: "destroy",
-        equipmentPersistence: false,
-        aiLevel: "normal",
-        respawnDebug: false,
-        inventoryMode: "starter",
-        creatorKitId: DEFAULT_CREATOR_KIT_ID,
-        prepBehavior: "hybrid",
-        winCondition: "infinite",
-        maxLives: 3,
-        timeLimitMinutes: 30,
-        killTarget: 3,
-        difficultyScaling: true,
-        squadSize: 1,
-        squad: [
-            {
-                name: "Hunter 1",
-                skinId: 0,
-                classId: "default",
-                aiLevel: "normal",
-                enableTaunts: true,
-                boatHandling: "destroy",
-                inventoryMode: "starter",
-                creatorKitId: DEFAULT_CREATOR_KIT_ID,
-                prepBehavior: "hybrid"
-            }
-        ]
-    };
-}
-function cloneConfig(config = {}) {
-    const defaults = getDefaultConfig();
-    return {
-        name: config.name || defaults.name,
-        skinId: Number.isInteger(config.skinId) ? config.skinId : defaults.skinId,
-        enableTaunts: config.enableTaunts !== undefined ? !!config.enableTaunts : defaults.enableTaunts,
-        boatHandling: config.boatHandling === "ignore" ? "ignore" : defaults.boatHandling,
-        equipmentPersistence: config.equipmentPersistence !== undefined ? !!config.equipmentPersistence : defaults.equipmentPersistence,
-        aiLevel: AI_LEVELS.some((level) => level.id === config.aiLevel) ? config.aiLevel : defaults.aiLevel,
-        respawnDebug: config.respawnDebug !== undefined ? !!config.respawnDebug : defaults.respawnDebug,
-        inventoryMode: INVENTORY_MODES.some((mode) => mode.id === config.inventoryMode) ? config.inventoryMode : defaults.inventoryMode,
-        creatorKitId: typeof config.creatorKitId === "string" && config.creatorKitId.length > 0 ? config.creatorKitId : defaults.creatorKitId,
-        prepBehavior: PREP_BEHAVIORS.some((b) => b.id === config.prepBehavior) ? config.prepBehavior : defaults.prepBehavior,
-        winCondition: WIN_CONDITIONS.some((w) => w.id === config.winCondition) ? config.winCondition : defaults.winCondition,
-        maxLives: Number.isInteger(config.maxLives) && config.maxLives > 0 ? config.maxLives : defaults.maxLives,
-        timeLimitMinutes: Number.isInteger(config.timeLimitMinutes) && config.timeLimitMinutes > 0 ? config.timeLimitMinutes : defaults.timeLimitMinutes,
-        killTarget: Number.isInteger(config.killTarget) && config.killTarget > 0 ? config.killTarget : defaults.killTarget,
-        difficultyScaling: config.difficultyScaling !== undefined ? !!config.difficultyScaling : defaults.difficultyScaling,
-        squadSize: Number.isInteger(config.squadSize) && config.squadSize > 0 ? config.squadSize : defaults.squadSize,
-        squad: Array.isArray(config.squad) ? config.squad.map(h => ({
-            name: h.name || "Hunter",
-            skinId: Number.isInteger(h.skinId) ? h.skinId : 0,
-            classId: h.classId || "default",
-            aiLevel: h.aiLevel || "normal",
-            enableTaunts: h.enableTaunts !== undefined ? !!h.enableTaunts : true,
-            boatHandling: h.boatHandling === "ignore" ? "ignore" : "destroy",
-            inventoryMode: h.inventoryMode || "starter",
-            creatorKitId: h.creatorKitId || DEFAULT_CREATOR_KIT_ID,
-            prepBehavior: h.prepBehavior || "hybrid"
-        })) : JSON.parse(JSON.stringify(defaults.squad))
-    };
-}
-function getConfig(playerId) {
-    if (!playerConfigs.has(playerId)) {
-                const loaded = loadPersistentConfig(playerId);
-        playerConfigs.set(playerId, loaded || getDefaultConfig());
-    }
-    return playerConfigs.get(playerId);
-}
-function loadPersistentConfig(playerId) {
+  AI_LEVELS,
+  PERFORMANCE_PROFILES,
+  PREP_MODES,
+  RISK_PROFILES,
+  SKINS,
+  SQUAD_PRESETS,
+  VERSION,
+  WIN_MODES
+} from "./constants.js";
+import {
+  ensureCompass,
+  exportDebugReport,
+  forceHunterReplan,
+  getStatusText,
+  giveHunterTestResources,
+  resetHunterForTesting,
+  resetHunterRouteMemory,
+  startHunt,
+  stopHunt,
+  teleportHunterForTesting,
+  toggleHunterPause
+} from "./hunt.js";
+import {
+  getConfig,
+  getHunters,
+  isHuntActive,
+  isStateReady,
+  resetConfig,
+  saveConfig
+} from "./state.js";
+import {
+  cleanName,
+  finiteInteger,
+  safeIndex,
+  steppedInteger
+} from "./utils.js";
+
+function openSoon(player, callback, ...args) {
+  system.runTimeout(() => {
     try {
-        const raw = world.getDynamicProperty(`${CONFIG_PROP}_${playerId}`);
-        if (raw) {
-            return cloneConfig(JSON.parse(raw));
-        }
-    } catch (_) { }
-    return null;
-}
-function savePersistentConfig(playerId, config) {
-    try {
-        world.setDynamicProperty(`${CONFIG_PROP}_${playerId}`, JSON.stringify(config));
-    } catch (_) { }
-}
-export function rememberLastUsedConfig(playerId, config) {
-    const cloned = cloneConfig(config);
-    lastUsedConfigs.set(playerId, cloned);
-    savePersistentConfig(playerId, cloned);
-}
-export function getLastUsedConfig(playerId) {
-    const config = lastUsedConfigs.get(playerId);
-    if (config) return cloneConfig(config);
-    return loadPersistentConfig(playerId);
-}
-export function describeAILevel(levelId) {
-    return AI_LEVELS.find((level) => level.id === levelId)?.name ?? "Normal";
-}
-export function describeWinCondition(conditionId) {
-    return WIN_CONDITIONS.find((w) => w.id === conditionId)?.name ?? "Infinite";
-}
-export function describePrepBehavior(behaviorId) {
-    return PREP_BEHAVIORS.find((b) => b.id === behaviorId)?.name ?? "Hybrid";
-}
-export function showSpawnMenu(player, handlers, hunterActive = false) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§l§4MANHUNT BOT v1.0.0")
-        .body(buildSpawnMenuBody(config, hunterActive));
-    const actions = [];
-    addMenuButton(form, actions, "§l§cStart Hunt\n§r§7Use current config and begin countdown", () => {
-        if (hunterActive) {
-            player.onScreenDisplay.setActionBar("§cA hunter is already active.");
-            return;
-        }
-        showSpawnConfirmation(player, config, handlers, hunterActive, false);
-    });
-    addMenuButton(form, actions, "§l§6Quick Restart\n§r§7Reuse the last confirmed hunt config", () => {
-        const lastConfig = getLastUsedConfig(player.id);
-        if (!lastConfig) {
-            player.onScreenDisplay.setActionBar("§eNo previous hunt config is available.");
-            return;
-        }
-        if (hunterActive) {
-            player.onScreenDisplay.setActionBar("§cDespawn the current hunter first.");
-            return;
-        }
-        showSpawnConfirmation(player, lastConfig, handlers, hunterActive, true);
-    });
-    addMenuButton(form, actions, "§l§dManage Hunt Squad\n§r§7Configure multi-hunter squad settings", () => {
-        showSquadLobby(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, "§l§e🏆 Achievements Checklist\n§r§7Check unlocked manhunt challenges", () => {
-        showAchievementsChecklist(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, "§l§bHunt Status\n§r§7View squad runtime state and coordinates", () => {
-        showHuntStatus(player, handlers, hunterActive);
-    });
-    addMenuButton(form, actions, `§lInventory Mode: ${describeInventoryMode(config.inventoryMode)}\n§r§7Set item source for hunter`, () => {
-        showInventoryModeSelector(player, handlers, hunterActive);
-    });
-    addMenuButton(
-        form, actions,
-        `§lWin Condition: ${describeWinCondition(config.winCondition)}${
-            config.winCondition === "limited_lives" ? ` (${config.maxLives} Lives)` :
-            config.winCondition === "time_limit" ? ` (${config.timeLimitMinutes} min)` :
-            config.winCondition === "kill_count" ? ` (${config.killTarget} Kills)` : ""
-        }\n§r§7Set how the hunt ends`,
-        () => {
-            showWinConditionSelector(player, handlers, hunterActive);
-        }
-    );
-    addMenuButton(
-        form, actions,
-        config.difficultyScaling
-            ? "§lDifficulty Scaling: Enabled\n§r§7Hunters get harder over time"
-            : "§lDifficulty Scaling: Disabled\n§r§7Hunters stay at base difficulty",
-        () => {
-            config.difficultyScaling = !config.difficultyScaling;
-            player.onScreenDisplay.setActionBar(
-                config.difficultyScaling ? "§aDifficulty scaling enabled." : "§cDifficulty scaling disabled."
-            );
-            showSpawnMenu(player, handlers, hunterActive);
-        }
-    );
-    addMenuButton(
-        form, actions,
-        config.equipmentPersistence
-            ? "§lEquipment: Keep On Death\n§r§7Hunters keep gear after death"
-            : "§lEquipment: Drop On Death\n§r§7Hunters drop gear after death",
-        () => {
-            config.equipmentPersistence = !config.equipmentPersistence;
-            player.onScreenDisplay.setActionBar(
-                config.equipmentPersistence
-                    ? "§aEquipment persistence enabled."
-                    : "§cEquipment will drop on death."
-            );
-            showSpawnMenu(player, handlers, hunterActive);
-        }
-    );
-    addMenuButton(
-        form, actions,
-        config.respawnDebug
-            ? "§lRespawn Debug: Enabled\n§r§7Show detailed respawn diagnostics"
-            : "§lRespawn Debug: Disabled\n§r§7Hide detailed respawn diagnostics",
-        () => {
-            config.respawnDebug = !config.respawnDebug;
-            player.onScreenDisplay.setActionBar(
-                config.respawnDebug
-                    ? "§aRespawn debug messages enabled."
-                    : "§7Respawn debug messages disabled."
-            );
-            showSpawnMenu(player, handlers, hunterActive);
-        }
-    );
-    if (hunterActive) {
-        addMenuButton(form, actions, "§l§4Despawn Squad\n§r§7Remove all active hunters", () => {
-            handlers.onDespawn?.(player);
-        });
+      const result = callback(player, ...args);
+      if (result && typeof result.catch === "function") result.catch((error) => console.warn(`[Manhunt AI Bot] UI error: ${error}`));
+    } catch (error) {
+      console.warn(`[Manhunt AI Bot] UI error: ${error}`);
     }
-    addMenuButton(form, actions, "§lClose\n§r§7Exit menu", () => { });
-    form.show(player).then((response) => {
-        if (response.canceled) return;
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => { });
-}
-function buildSpawnMenuBody(config, hunterActive) {
-    const runtimeState = hunterActive
-        ? (isRespawning() ? "Respawning" : "Active")
-        : (isActive() ? "Active" : "Idle");
-    const huntState = getHuntState();
-    let winInfo = "";
-    if (huntState.active) {
-        if (huntState.winCondition === "time_limit") {
-            winInfo = `\n§fTime Left: §e${getRemainingTimeMinutes().toFixed(1)}m`;
-        } else if (huntState.winCondition === "limited_lives") {
-            winInfo = `\n§fLives Left: §c${getRemainingLives()}`;
-        } else if (huntState.winCondition === "kill_count") {
-            winInfo = `\n§fKills Needed: §c${getRemainingKills()}`;
-        }
-    }
-    
-    const squadSize = config.squadSize || 1;
-    const squad = config.squad || [];
-    const compList = squad.slice(0, squadSize).map((h, i) => {
-        const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
-        const className = classMeta.name.split(" ")[0];
-        return `  §7${i+1}. §e${h.name} §7(§b${className}§7)`;
-    }).join("\n");
-
-    return [
-        "§7Configure the hunter squad and manage the current hunt.",
-        "",
-        "§l§fSquad Configuration",
-        `§fSquad Size: §d${squadSize}`,
-        `§fComposition:`,
-        compList,
-        "",
-        `§fWin Condition: §6${describeWinCondition(config.winCondition)}${
-            config.winCondition === "limited_lives" ? ` (${config.maxLives} Lives)` :
-            config.winCondition === "time_limit" ? ` (${config.timeLimitMinutes} min)` :
-            config.winCondition === "kill_count" ? ` (${config.killTarget} Kills)` : ""
-        }`,
-        `§fDifficulty Scaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
-        `§fEquipment Persistence: ${config.equipmentPersistence ? "§aKeep" : "§cDrop"}`,
-        "",
-        "§l§fHunt Status",
-        `§fState: ${hunterActive ? "§c" : "§7"}${runtimeState}${winInfo}`
-    ].join("\n");
-}
-function addMenuButton(form, actions, label, action) {
-    form.button(label);
-    actions.push(action);
-}
-function showSpawnConfirmation(player, config, handlers, hunterActive, isQuickRestart) {
-    const squadSize = config.squadSize || 1;
-    const squad = config.squad || [];
-    
-    const compText = squad.slice(0, squadSize).map((h, i) => {
-        const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
-        const className = classMeta.name.split(" ")[0];
-        return `  §e- ${h.name} §7(§b${className}§7)`;
-    }).join("\n");
-    
-    const form = new ActionFormData()
-        .title(isQuickRestart ? "§l§6QUICK RESTART" : "§l§4CONFIRM SQUAD HUNT")
-        .body([
-            "§7Final check before hunt begins.",
-            "",
-            `§fSquad Size: §d${squadSize}`,
-            "§fSquad Members:",
-            compText,
-            "",
-            `§fWin Condition: §6${describeWinCondition(config.winCondition)}`,
-            `§fDifficulty Scaling: ${config.difficultyScaling ? "§aOn" : "§cOff"}`,
-            `§fEquipment: ${config.equipmentPersistence ? "§aKeep On Death" : "§cDrop On Death"}`,
-            "",
-            "§cNote: Starter inventory mode will clear your inventory.",
-            "§710‑second countdown starts immediately."
-        ].join("\n"))
-        .button(isQuickRestart ? "§l§aRestart Squad Hunt" : "§l§aStart Squad Hunt")
-        .button("§l§7Back");
-    form.show(player).then((response) => {
-        if (response.canceled || response.selection === 1) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const confirmedConfig = cloneConfig(config);
-        rememberLastUsedConfig(player.id, confirmedConfig);
-        if (isQuickRestart) {
-            handlers.onQuickRestart?.(player, confirmedConfig);
-        } else {
-            handlers.onSpawn?.(player, confirmedConfig);
-        }
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showNameEditor(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    system.run(() => {
-        const form = new ModalFormData()
-            .title("§lEDIT HUNTER NAME")
-            .textField("Hunter name", "Hunter", { defaultValue: config.name });
-        form.show(player).then((response) => {
-            if (response.canceled || response.cancelationReason === "UserBusy") {
-                if (response.cancelationReason === "UserBusy") {
-                    system.runTimeout(() => {
-                        showNameEditor(player, handlers, hunterActive);
-                    }, 20);
-                    return;
-                }
-                showSpawnMenu(player, handlers, hunterActive);
-                return;
-            }
-            const name = String(response.formValues?.[0] ?? "").trim();
-            config.name = name.length > 0 ? name.substring(0, 24) : "Hunter";
-            player.onScreenDisplay.setActionBar(`§aHunter name set to §e${config.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        }).catch(() => {
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    });
-}
-function showSkinSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lSELECT SKIN")
-        .body(`§7Current skin: §b${SKIN_OPTIONS[config.skinId]?.name ?? "Steve"}`);
-    const actions = [];
-    for (const skin of SKIN_OPTIONS) {
-        const selected = skin.id === config.skinId ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${skin.name}${selected}\n§r§7${skin.description}`, () => {
-            config.skinId = skin.id;
-            player.onScreenDisplay.setActionBar(`§aSkin set to §b${skin.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showAILevelSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lAI LEVEL")
-        .body(`§7Current level: §6${describeAILevel(config.aiLevel)}`);
-    const actions = [];
-    for (const level of AI_LEVELS) {
-        const selected = level.id === config.aiLevel ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${level.name}${selected}\n§r§7${level.description}`, () => {
-            config.aiLevel = level.id;
-            player.onScreenDisplay.setActionBar(`§aAI level set to §6${level.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showWinConditionConfigurator(player, conditionId, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    
-    system.run(() => {
-        const form = new ModalFormData();
-        
-        if (conditionId === "limited_lives") {
-            form.title("§lCONFIG: LIMITED LIVES")
-                .slider("Max Squad Lives", 1, 20, 1, config.maxLives || 3);
-        } else if (conditionId === "time_limit") {
-            form.title("§lCONFIG: SURVIVAL TIME")
-                .slider("Time Limit (Minutes)", 5, 120, 5, config.timeLimitMinutes || 30);
-        } else if (conditionId === "kill_count") {
-            form.title("§lCONFIG: TARGET KILLS")
-                .slider("Target Hunter Kills", 1, 20, 1, config.killTarget || 3);
-        } else {
-            config.winCondition = "infinite";
-            player.onScreenDisplay.setActionBar("§aWin condition set to §6Infinite Respawns");
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        
-        form.show(player).then((res) => {
-            if (res.canceled || res.cancelationReason === "UserBusy") {
-                if (res.cancelationReason === "UserBusy") {
-                    system.runTimeout(() => {
-                        showWinConditionConfigurator(player, conditionId, handlers, hunterActive);
-                    }, 20);
-                    return;
-                }
-                showWinConditionSelector(player, handlers, hunterActive);
-                return;
-            }
-            
-            const formValues = res.formValues || [];
-            config.winCondition = conditionId;
-            
-            if (conditionId === "limited_lives") {
-                config.maxLives = Math.floor(formValues[0] ?? 3);
-                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Limited Lives (${config.maxLives})`);
-            } else if (conditionId === "time_limit") {
-                config.timeLimitMinutes = Math.floor(formValues[0] ?? 30);
-                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Time Limit (${config.timeLimitMinutes} min)`);
-            } else if (conditionId === "kill_count") {
-                config.killTarget = Math.floor(formValues[0] ?? 3);
-                player.onScreenDisplay.setActionBar(`§aWin Condition: §6Kill Target (${config.killTarget} kills)`);
-            }
-            
-            showSpawnMenu(player, handlers, hunterActive);
-        }).catch(() => {
-            showWinConditionSelector(player, handlers, hunterActive);
-        });
-    });
+  }, 1);
 }
 
-function showWinConditionSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lWIN CONDITION")
-        .body(`§7Current: §6${describeWinCondition(config.winCondition)}`);
-    const actions = [];
-    for (const condition of WIN_CONDITIONS) {
-        const selected = condition.id === config.winCondition ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${condition.name}${selected}\n§r§7${condition.description}`, () => {
-            if (condition.id === "infinite") {
-                config.winCondition = "infinite";
-                player.onScreenDisplay.setActionBar("§aWin condition set to §6Infinite Respawns");
-                showSpawnMenu(player, handlers, hunterActive);
-            } else {
-                showWinConditionConfigurator(player, condition.id, handlers, hunterActive);
-            }
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showPrepBehaviorSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lPREP BEHAVIOR")
-        .body(`§7Current: §6${describePrepBehavior(config.prepBehavior)}`);
-    const actions = [];
-    for (const behavior of PREP_BEHAVIORS) {
-        const selected = behavior.id === config.prepBehavior ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${behavior.name}${selected}\n§r§7${behavior.description}`, () => {
-            config.prepBehavior = behavior.id;
-            player.onScreenDisplay.setActionBar(`§aPrep behavior set to §6${behavior.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showInventoryModeSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lINVENTORY MODE")
-        .body(`§7Current mode: §6${describeInventoryMode(config.inventoryMode)}\n§7Kit: §6${config.creatorKitId || "Default"}`);
-    const actions = [];
-    for (const mode of INVENTORY_MODES) {
-        const selected = mode.id === config.inventoryMode ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${mode.name}${selected}\n§r§7${mode.description}`, () => {
-            config.inventoryMode = mode.id;
-            if (mode.id === "creator_kit") {
-                if (hunterActive) {
-                    try {
-                        const hunter = getHunter();
-                        const target = getTarget();
-                        const hunterInventory = getInventory();
-                        if (hunter && target && hunterInventory) {
-                            const playerLoadout = capturePlayerInventoryProfile(target);
-                            hunterInventory.refreshForConfig(config, playerLoadout, {
-                                replaceExisting: false,
-                                preserveUpgrades: true
-                            });
-                            try { hunterInventory.equipBest(hunter); } catch (_) { }
-                        }
-                    } catch (_) { }
-                }
-                showCreatorKitSelector(player, handlers, hunterActive);
-                return;
-            }
-            if (mode.id !== "creator_kit") {
-                config.creatorKitId = DEFAULT_CREATOR_KIT_ID;
-            }
-            if (hunterActive) {
-                try {
-                    const hunter = getHunter();
-                    const target = getTarget();
-                    const hunterInventory = getInventory();
-                    if (hunter && target && hunterInventory) {
-                        const playerLoadout = capturePlayerInventoryProfile(target);
-                        hunterInventory.refreshForConfig(config, playerLoadout, {
-                            replaceExisting: false,
-                            preserveUpgrades: true
-                        });
-                        try { hunterInventory.equipBest(hunter); } catch (_) { }
-                    }
-                } catch (_) { }
-            }
-            player.onScreenDisplay.setActionBar(`§aInventory mode set to §6${mode.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-function showCreatorKitSelector(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const choices = getCreatorKitChoices();
-    const form = new ActionFormData()
-        .title("§lCREATOR KIT")
-        .body(`§7Select a kit for creator_kit mode`);
-    const actions = [];
-    for (const kit of choices) {
-        const selected = kit.id === config.creatorKitId ? " §a[Selected]" : "";
-        addMenuButton(form, actions, `§l${kit.name}${selected}\n§r§7${kit.description}`, () => {
-            config.creatorKitId = kit.id;
-            if (hunterActive && config.inventoryMode === "creator_kit") {
-                try {
-                    const hunter = getHunter();
-                    const target = getTarget();
-                    const hunterInventory = getInventory();
-                    if (hunter && target && hunterInventory) {
-                        const playerLoadout = capturePlayerInventoryProfile(target);
-                        hunterInventory.refreshForConfig(config, playerLoadout, {
-                            replaceExisting: false,
-                            preserveUpgrades: true
-                        });
-                        try { hunterInventory.equipBest(hunter); } catch (_) { }
-                    }
-                } catch (_) { }
-            }
-            player.onScreenDisplay.setActionBar(`§aCreator kit set to §6${kit.name}`);
-            showSpawnMenu(player, handlers, hunterActive);
-        });
-    }
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showInventoryModeSelector(player, handlers, hunterActive);
-    });
-    form.show(player).then((response) => {
-        if (response.canceled) {
-            showInventoryModeSelector(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[response.selection];
-        if (action) action();
-    }).catch(() => {
-        showInventoryModeSelector(player, handlers, hunterActive);
-    });
-}
-function showHuntStatus(player, handlers, hunterActive) {
-    const hunters = getHunters();
-    const target = getTarget();
-    const bed = getBed();
-    const respawnStatus = getLastRespawnStatus();
-    const huntState = getHuntState();
-    
-    const lines = [
-        `§fHunt State: ${isRespawning() ? "§eRespawning" : (hunterActive ? "§cActive" : "§7Idle")}`,
-        `§fTarget Player: ${target ? `§e${target.name}` : "§7None"}`,
-        `§fWin Condition: §6${describeWinCondition(huntState.winCondition)}`,
-        `§fTracked Bed: ${bed.pos ? `§a${bed.dimId} @ ${Math.floor(bed.pos.x)} ${Math.floor(bed.pos.y)} ${Math.floor(bed.pos.z)}` : "§7None"}`
-    ];
-    
-    if (hunterActive && hunters.length > 0) {
-        lines.push("", "§l§fActive Hunter Squad:");
-        hunters.forEach((h, i) => {
-            let entityLoc = "Unknown";
-            let dimName = "Overworld";
-            let healthText = "Unknown HP";
-            try {
-                const loc = h.entity.location;
-                entityLoc = `${Math.floor(loc.x)} ${Math.floor(loc.y)} ${Math.floor(loc.z)}`;
-                dimName = h.entity.dimension.id.replace("minecraft:", "");
-                const health = h.entity.getComponent("minecraft:health");
-                if (health) {
-                    healthText = `${Math.round(health.currentValue)}/${health.defaultValue} HP`;
-                }
-            } catch (_) {}
-            
-            const classMeta = serverForm?.classes?.[h.classId] || { name: h.classId };
-            lines.push(
-                `§bH${i + 1}: ${h.name} §7(§e${classMeta.name}§7)`,
-                `  §fState: §a${healthText} §7| §fAI: §6${describeAILevel(h.aiLevel)}`,
-                `  §fPos: §a${dimName} @ ${entityLoc}`,
-                `  §fDeaths: §c${h.deathCount} §7| §fLives Left: §d${h.lives ?? "N/A"}`
-            );
-        });
-    } else {
-        lines.push("", "§7No hunters active currently.");
-    }
-    
-    lines.push("", "§l§fSystem Respawn Info:");
-    lines.push(
-        `§fLast Respawn: ${respawnStatus.success === true ? "§aSuccess" : respawnStatus.success === false ? "§cFailed" : "§7Pending"}`,
-        `§fRespawn Stage: §7${respawnStatus.stage}`
-    );
-    if (getRespawnDebug()) {
-        lines.push(
-            `§fRespawn Reason: §7${respawnStatus.reason ?? "None"}`,
-            `§fAttempts: §7${respawnStatus.attempts ?? 0}`
-        );
-    }
-    
-    const form = new ActionFormData()
-        .title("§lHUNT STATUS")
-        .body(lines.join("\n"))
-        .button("§l§7Back");
-    form.show(player).then(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-}
-export function clearPlayerConfig(playerId) {
-    playerConfigs.delete(playerId);
-    lastUsedConfigs.delete(playerId);
+async function showForm(form, player) {
+  try { return await form.show(player); }
+  catch (error) {
+    console.warn(`[Manhunt AI Bot] Form could not be shown: ${error}`);
+    return undefined;
+  }
 }
 
-function showSquadLobby(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const squadFormMeta = serverForm?.squad_form || {};
-    const title = squadFormMeta.title || "§l§4MANHUNT SQUAD LOBBY";
-    
-    const form = new ActionFormData()
-        .title(title)
-        .body(`§7Configure class, difficulty, name, and skins for each hunter in your squad.\n\n§fCurrent Squad Size: §d${config.squadSize || 1}`);
-    
-    const actions = [];
-    
-    addMenuButton(form, actions, "§l§6Squad Size & Presets\n§r§7Apply presets or change squad size", () => {
-        showSquadSizeAndPresets(player, handlers, hunterActive);
-    });
-    
-    const squadSize = config.squadSize || 1;
-    if (!config.squad) config.squad = [];
-    while (config.squad.length < squadSize) {
-        const idx = config.squad.length;
-        const classes = ["default", "knight", "archer", "saboteur"];
-        config.squad.push({
-            name: `Hunter ${idx + 1}`,
-            skinId: idx % 8,
-            classId: classes[idx % classes.length],
-            aiLevel: config.aiLevel || "normal",
-            enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
-            boatHandling: config.boatHandling || "destroy",
-            inventoryMode: config.inventoryMode || "starter",
-            creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
-            prepBehavior: config.prepBehavior || "hybrid"
-        });
-    }
-    
-    for (let i = 0; i < squadSize; i++) {
-        const hunterConf = config.squad[i];
-        const classMeta = serverForm?.classes?.[hunterConf.classId] || { name: hunterConf.classId };
-        const className = classMeta.name;
-        const skinName = SKIN_OPTIONS[hunterConf.skinId]?.name ?? "Steve";
-        const aiName = describeAILevel(hunterConf.aiLevel);
-        
-        addMenuButton(
-            form, actions, 
-            `§l§bSlot ${i + 1}: ${hunterConf.name}\n§r§7Class: ${className} | AI: ${aiName} | Skin: ${skinName}`,
-            () => {
-                showHunterSlotEditor(player, i, handlers, hunterActive);
-            }
-        );
-    }
-    
-    addMenuButton(form, actions, "§l§7Back to Menu", () => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
-    
-    form.show(player).then((res) => {
-        if (res.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[res.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
-    });
+function controlValues(response) {
+  if (!response || response.canceled || !Array.isArray(response.formValues)) return undefined;
+  // server-ui 2.x inserts undefined for labels, headers and dividers.
+  return response.formValues.filter((value) => value !== undefined);
 }
 
-function showSquadSizeAndPresets(player, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const form = new ActionFormData()
-        .title("§lSQUAD PRESETS")
-        .body("§7Choose a starting squad preset or adjust size manually.");
-    
-    const actions = [];
-    
-    const presets = serverForm?.squad_form?.presets || [];
-    for (const preset of presets) {
-        addMenuButton(form, actions, `§l${preset.name}`, () => {
-            const presetClasses = preset.classes || ["default"];
-            config.squadSize = presetClasses.length;
-            config.squad = presetClasses.map((clsId, idx) => {
-                const classMeta = serverForm?.classes?.[clsId] || { name: `${clsId} Hunter` };
-                const names = ["Steve", "Alex", "Zombie", "Skeleton", "Creeper", "Custom", "Dream", "Techno"];
-                const name = `${classMeta.name.split(" ")[0]} ${names[idx % names.length]}`;
-                return {
-                    name: name,
-                    skinId: idx % 8,
-                    classId: clsId,
-                    aiLevel: config.aiLevel || "normal",
-                    enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
-                    boatHandling: config.boatHandling || "destroy",
-                    inventoryMode: config.inventoryMode || "starter",
-                    creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
-                    prepBehavior: config.prepBehavior || "hybrid"
-                };
-            });
-            player.onScreenDisplay.setActionBar(`§aApplied preset: ${preset.name.split("\n")[0]}`);
-            showSquadLobby(player, handlers, hunterActive);
-        });
-    }
-    
-    addMenuButton(form, actions, "§l§bSet Squad Size Manually\n§r§7Choose squad size from 1 to 4", () => {
-        system.run(() => {
-            const modal = new ModalFormData()
-                .title("§lMANUAL SQUAD SIZE")
-                .slider("Squad Size", 1, 4, 1, config.squadSize || 1);
-            modal.show(player).then((res) => {
-                if (res.canceled) {
-                    showSquadSizeAndPresets(player, handlers, hunterActive);
-                    return;
-                }
-                const newSize = Math.floor(res.formValues?.[0] ?? config.squadSize);
-                config.squadSize = newSize;
-                if (!config.squad) config.squad = [];
-                while (config.squad.length < newSize) {
-                    const idx = config.squad.length;
-                    const classes = ["default", "knight", "archer", "saboteur"];
-                    const classId = classes[idx % classes.length];
-                    config.squad.push({
-                        name: `Hunter ${idx + 1}`,
-                        skinId: idx % 8,
-                        classId: classId,
-                        aiLevel: config.aiLevel || "normal",
-                        enableTaunts: config.enableTaunts !== undefined ? config.enableTaunts : true,
-                        boatHandling: config.boatHandling || "destroy",
-                        inventoryMode: config.inventoryMode || "starter",
-                        creatorKitId: config.creatorKitId || DEFAULT_CREATOR_KIT_ID,
-                        prepBehavior: config.prepBehavior || "hybrid"
-                    });
-                }
-                if (config.squad.length > newSize) {
-                    config.squad = config.squad.slice(0, newSize);
-                }
-                player.onScreenDisplay.setActionBar(`§aSquad size set to §d${newSize}`);
-                showSquadLobby(player, handlers, hunterActive);
-            }).catch(() => {
-                showSquadSizeAndPresets(player, handlers, hunterActive);
-            });
-        });
-    });
-    
-    addMenuButton(form, actions, "§l§7Back", () => {
-        showSquadLobby(player, handlers, hunterActive);
-    });
-    
-    form.show(player).then((res) => {
-        if (res.canceled) {
-            showSquadLobby(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[res.selection];
-        if (action) action();
-    }).catch(() => {
-        showSquadLobby(player, handlers, hunterActive);
-    });
+function winValue(config) {
+  if (config.winMode === 0) return `${config.livesOrKills} team lives`;
+  if (config.winMode === 1) return `${config.timeMinutes} minutes`;
+  if (config.winMode === 2) return `${config.livesOrKills} kills`;
+  if (config.winMode === 4) return "first dragon kill wins";
+  return "∞ unlimited lives";
 }
 
-function showHunterSlotEditor(player, slotIndex, handlers, hunterActive) {
-    const config = getConfig(player.id);
-    const hConf = config.squad[slotIndex];
-    
-    const classKeys = Object.keys(serverForm?.classes || {});
-    const classNames = classKeys.map(k => serverForm.classes[k].name);
-    const defaultClassIdx = Math.max(0, classKeys.indexOf(hConf.classId));
-    
-    const aiKeys = AI_LEVELS.map(l => l.id);
-    const aiNames = AI_LEVELS.map(l => l.name);
-    const defaultAIIdx = Math.max(0, aiKeys.indexOf(hConf.aiLevel));
-    
-    const skinNames = SKIN_OPTIONS.map(s => s.name);
-    const defaultSkinIdx = Math.max(0, SKIN_OPTIONS.findIndex(s => s.id === hConf.skinId));
-    
-    const prepKeys = PREP_BEHAVIORS.map(b => b.id);
-    const prepNames = PREP_BEHAVIORS.map(b => b.name);
-    const defaultPrepIdx = Math.max(0, prepKeys.indexOf(hConf.prepBehavior));
-    
-    system.run(() => {
-        const form = new ModalFormData()
-            .title(`§lEDIT HUNTER ${slotIndex + 1}`)
-            .textField("Hunter Name", "Name", hConf.name)
-            .dropdown("Class Profile", classNames, defaultClassIdx)
-            .dropdown("AI Difficulty", aiNames, defaultAIIdx)
-            .dropdown("Skin / Model", skinNames, defaultSkinIdx)
-            .dropdown("Gathering Behavior", prepNames, defaultPrepIdx)
-            .toggle("Enable Taunts", hConf.enableTaunts !== undefined ? hConf.enableTaunts : true);
-        
-        form.show(player).then((res) => {
-            if (res.canceled || res.cancelationReason === "UserBusy") {
-                if (res.cancelationReason === "UserBusy") {
-                    system.runTimeout(() => {
-                        showHunterSlotEditor(player, slotIndex, handlers, hunterActive);
-                    }, 20);
-                    return;
-                }
-                showSquadLobby(player, handlers, hunterActive);
-                return;
-            }
-            
-            const formValues = res.formValues || [];
-            const rawName = String(formValues[0] || "").trim();
-            hConf.name = rawName.length > 0 ? rawName.substring(0, 24) : `Hunter ${slotIndex + 1}`;
-            
-            const classIdx = formValues[1] ?? defaultClassIdx;
-            hConf.classId = classKeys[classIdx] || "default";
-            
-            const aiIdx = formValues[2] ?? defaultAIIdx;
-            hConf.aiLevel = aiKeys[aiIdx] || "normal";
-            
-            const skinIdx = formValues[3] ?? defaultSkinIdx;
-            hConf.skinId = SKIN_OPTIONS[skinIdx]?.id ?? 0;
-            
-            const prepIdx = formValues[4] ?? defaultPrepIdx;
-            hConf.prepBehavior = prepKeys[prepIdx] || "hybrid";
-            
-            hConf.enableTaunts = !!formValues[5];
-            
-            hConf.boatHandling = config.boatHandling || "destroy";
-            hConf.inventoryMode = config.inventoryMode || "starter";
-            hConf.creatorKitId = config.creatorKitId || DEFAULT_CREATOR_KIT_ID;
-            
-            player.onScreenDisplay.setActionBar(`§aHunter ${slotIndex + 1} updated successfully!`);
-            showSquadLobby(player, handlers, hunterActive);
-        }).catch(() => {
-            showSquadLobby(player, handlers, hunterActive);
-        });
-    });
+function setupText(config) {
+  return [
+    `§cHunter §8- §f${config.hunterName} × ${config.hunterCount}`,
+    `§dSquad §8- §f${SQUAD_PRESETS[config.squadPreset]}`,
+    `§6AI §8- §f${AI_LEVELS[config.aiLevel]} / ${RISK_PROFILES[config.riskProfile]}`,
+    `§eMode §8- §f${WIN_MODES[config.winMode]} (${winValue(config)})`,
+    `§aPreparation §8- §f${PREP_MODES[config.prepMode]}`,
+    `§bPerformance §8- §f${PERFORMANCE_PROFILES[config.performanceProfile]}`,
+    `§2Progression §8- ${config.gathering ? "§aEnabled" : "§cDisabled"} §8(§7netherite ${config.netheriteProgression ? "on" : "off"}§8)`,
+    `§5Dimensions §8- ${config.portalIntelligence ? "§aNether" : "§cNether off"} §8| §dEnd pursuit ${config.endPursuit ? "§aOn" : "§cOff"}`,
+    `§3Safe building §8- ${config.safeBuilding ? "§aEnabled" : "§cDisabled"}`
+  ].join("\n");
 }
 
-function showAchievementsChecklist(player, handlers, hunterActive) {
-    const unlocked = getUnlockedAchievements(player);
-    const totalCount = ACHIEVEMENTS.length;
-    const unlockedCount = ACHIEVEMENTS.filter(a => unlocked.includes(a.id)).length;
-    
-    const pct = Math.round((unlockedCount / totalCount) * 100);
-    const progressText = `§fProgress: §a${unlockedCount}/${totalCount} §7(§e${pct}%§7)\n\n§7Complete manhunt challenges to unlock persistent trophies!`;
-    
-    const form = new ActionFormData()
-        .title("§l§6🏆 ACHIEVEMENTS CHECKLIST")
-        .body(progressText);
-    
-    const actions = [];
-    
-    for (const ach of ACHIEVEMENTS) {
-        const isUnlocked = unlocked.includes(ach.id);
-        const prefix = isUnlocked ? "§a§l✔ " : "§c§l✘ ";
-        const status = isUnlocked ? "§aUnlocked" : "§7Locked";
-        addMenuButton(
-            form, actions, 
-            `${prefix}${ach.name}\n§r§7${status} - ${ach.description}`, 
-            () => {
-                if (isUnlocked) {
-                    player.sendMessage(`§6§l🏆 Achievement Unlocked: §e${ach.name}\n§7${ach.description}`);
-                } else {
-                    player.sendMessage(`§c§l🔒 Locked: §e${ach.name}\n§7Try to perform this challenge in-game!`);
-                }
-                showAchievementsChecklist(player, handlers, hunterActive);
-            }
-        );
-    }
-    
-    addMenuButton(form, actions, "§l§7Back to Menu", () => {
-        showSpawnMenu(player, handlers, hunterActive);
+export async function showMainMenu(player) {
+  if (!isStateReady()) {
+    player.sendMessage("§eManhunt AI Bot is initializing. Reopen the compass in one second.");
+    return;
+  }
+  const active = isHuntActive();
+  const config = getConfig();
+  const form = new ActionFormData()
+    .title(`§l§4MANHUNT AI BOT §r§8v${VERSION}`)
+    .header(active ? "§cACTIVE ADAPTIVE HUNT" : "§6REAL-AI HUNT SETUP")
+    .label(active ? getStatusText() : setupText(config))
+    .divider();
+
+  if (active) {
+    form
+      .button("§6Live AI Dashboard\n§7Goals, plans, memory and inventory")
+      .button("§dDeveloper Tools\n§7Replan, reset, teleport and diagnostics")
+      .button("§cStop Hunt")
+      .button(`§7How v${VERSION} Works`);
+  } else {
+    form
+      .button("§l§cSTART HUNT\n§r§710-second head start", "textures/items/hunter_compass")
+      .button("§6Hunter and Squad\n§7Name, skins, count, roles and skill")
+      .button("§eHunt Rules\n§7Victory mode and preparation")
+      .button("§aAI and Survival\n§7Mining, crafting, portals and recovery")
+      .button("§bPerformance and Debug\n§7Work budget, route markers and errors")
+      .button("§4Reset All Settings")
+      .button("§dGive Hunter Compass")
+      .button(`§7How v${VERSION} Works`);
+  }
+
+  const response = await showForm(form, player);
+  if (!response || response.canceled) return;
+  if (active) {
+    if (response.selection === 0) openSoon(player, showStatus);
+    if (response.selection === 1) openSoon(player, showDeveloperTools);
+    if (response.selection === 2) openSoon(player, confirmStop);
+    if (response.selection === 3) openSoon(player, showHelp);
+    return;
+  }
+
+  if (response.selection === 0) startHunt(player);
+  if (response.selection === 1) openSoon(player, showHunterSquadSettings);
+  if (response.selection === 2) openSoon(player, showRulesSettings);
+  if (response.selection === 3) openSoon(player, showIntelligenceSettings);
+  if (response.selection === 4) openSoon(player, showPerformanceSettings);
+  if (response.selection === 5) openSoon(player, confirmResetSettings);
+  if (response.selection === 6) {
+    ensureCompass(player);
+    player.sendMessage("§aHunter Compass added.");
+  }
+  if (response.selection === 7) openSoon(player, showHelp);
+}
+
+async function showHunterSquadSettings(player) {
+  const config = getConfig();
+  const form = new ModalFormData()
+    .title("§l§6HUNTER AND SQUAD")
+    .header("§cIdentity")
+    .textField("Base hunter name", "Hunter", { defaultValue: config.hunterName })
+    .dropdown("Primary skin", SKINS, { defaultValueIndex: safeIndex(config.skin, SKINS, 0) })
+    .slider("Hunter count", 1, 4, { valueStep: 1, defaultValue: finiteInteger(config.hunterCount, 1, 4, 1) })
+    .dropdown("Squad strategy", SQUAD_PRESETS, { defaultValueIndex: safeIndex(config.squadPreset, SQUAD_PRESETS, 0) })
+    .divider()
+    .header("§6Decision Style")
+    .dropdown("AI skill", AI_LEVELS, { defaultValueIndex: safeIndex(config.aiLevel, AI_LEVELS, 1) })
+    .dropdown("Risk profile", RISK_PROFILES, { defaultValueIndex: safeIndex(config.riskProfile, RISK_PROFILES, 1) })
+    .toggle("Human-like imperfect choices", { defaultValue: config.humanMistakes })
+    .label("§7Balanced Squad assigns Chaser, Gatherer, Builder and Archer. Pressure Squad assigns two Chasers before Builder and Archer. Shared perception prevents four separate full world scans.")
+    .submitButton("Save Squad");
+
+  const values = controlValues(await showForm(form, player));
+  if (values && values.length >= 7) {
+    const saved = saveConfig({
+      hunterName: cleanName(values[0], config.hunterName),
+      skin: safeIndex(values[1], SKINS, config.skin),
+      hunterCount: finiteInteger(values[2], 1, 4, config.hunterCount),
+      squadPreset: safeIndex(values[3], SQUAD_PRESETS, config.squadPreset),
+      aiLevel: safeIndex(values[4], AI_LEVELS, config.aiLevel),
+      riskProfile: safeIndex(values[5], RISK_PROFILES, config.riskProfile),
+      humanMistakes: values[6] === true
     });
-    
-    form.show(player).then((res) => {
-        if (res.canceled) {
-            showSpawnMenu(player, handlers, hunterActive);
-            return;
-        }
-        const action = actions[res.selection];
-        if (action) action();
-    }).catch(() => {
-        showSpawnMenu(player, handlers, hunterActive);
+    player.sendMessage(`§aSaved: §f${saved.hunterName} × ${saved.hunterCount} §7| ${SQUAD_PRESETS[saved.squadPreset]} | ${AI_LEVELS[saved.aiLevel]}`);
+  }
+  openSoon(player, showMainMenu);
+}
+
+async function showRulesSettings(player) {
+  const config = getConfig();
+  const form = new ModalFormData()
+    .title("§l§eHUNT RULES")
+    .header("§6Victory")
+    .dropdown("Win condition", WIN_MODES, { defaultValueIndex: safeIndex(config.winMode, WIN_MODES, 3) })
+    .slider("Team lives / required kills", 1, 40, { valueStep: 1, defaultValue: finiteInteger(config.livesOrKills, 1, 40, 3) })
+    .slider("Time limit in minutes", 5, 240, { valueStep: 5, defaultValue: steppedInteger(config.timeMinutes, 5, 240, 5, 30) })
+    .label("§8Infinite ignores the lives slider and every hunter respawns independently. With multiple hunters, Limited Lives counts total squad deaths. §dRace to the Dragon§8: the first side to slay the Ender Dragon wins; hunters follow through the End and sabotage your fight.")
+    .divider()
+    .header("§aPreparation")
+    .dropdown("Preparation behavior", PREP_MODES, { defaultValueIndex: safeIndex(config.prepMode, PREP_MODES, 0) })
+    .toggle("Keep inventory and progression after death", { defaultValue: config.equipmentPersistence })
+    .toggle("Time/death difficulty progression", { defaultValue: config.difficultyScaling })
+    .submitButton("Save Rules");
+
+  const values = controlValues(await showForm(form, player));
+  if (values && values.length >= 6) {
+    const saved = saveConfig({
+      winMode: safeIndex(values[0], WIN_MODES, config.winMode),
+      livesOrKills: finiteInteger(values[1], 1, 40, config.livesOrKills),
+      timeMinutes: steppedInteger(values[2], 5, 240, 5, config.timeMinutes),
+      prepMode: safeIndex(values[3], PREP_MODES, config.prepMode),
+      equipmentPersistence: values[4] === true,
+      difficultyScaling: values[5] === true
     });
+    player.sendMessage(`§aRules saved: §f${WIN_MODES[saved.winMode]} §7| ${PREP_MODES[saved.prepMode]}`);
+  }
+  openSoon(player, showMainMenu);
+}
+
+async function showIntelligenceSettings(player) {
+  const config = getConfig();
+  const form = new ModalFormData()
+    .title("§l§aAI AND SURVIVAL")
+    .header("§2Progression")
+    .toggle("Gather, craft, smelt and upgrade", { defaultValue: config.gathering })
+    .toggle("Advanced tool-aware mining", { defaultValue: config.advancedMining })
+    .toggle("Netherite progression (ancient debris to full gear)", { defaultValue: config.netheriteProgression })
+    .toggle("Safe plan-owned block placement", { defaultValue: config.safeBuilding })
+    .toggle("Portal memory and construction", { defaultValue: config.portalIntelligence })
+    .toggle("End pursuit (stronghold sense, end portals, dragon race)", { defaultValue: config.endPursuit })
+    .divider()
+    .header("§bTracking and Recovery")
+    .toggle("Sneaking can break distant exact tracking", { defaultValue: config.stealthTracking })
+    .toggle("Emergency recovery after long failure", { defaultValue: config.emergencyRecovery })
+    .toggle("Clean hunter-built route blocks at hunt end", { defaultValue: config.cleanupPlacedBlocks })
+    .toggle("Counter boats during pursuit", { defaultValue: config.destroyBoats })
+    .divider()
+    .header("§6Personality")
+    .toggle("Event-based hunter taunts", { defaultValue: config.taunts })
+    .toggle("Player-style chat lines (greetings, milestones, banter)", { defaultValue: config.chatPersonality })
+    .label("§7Every break/place action must belong to an active plan. Mining respects tool tiers, avoids falling blocks and lava, and preserves iron for pickaxe, shield and bucket before optional armor. Netherite progression mines ancient debris in the Nether once the diamond pickaxe exists.")
+    .submitButton("Save Intelligence");
+
+  const values = controlValues(await showForm(form, player));
+  if (values && values.length >= 12) {
+    const saved = saveConfig({
+      gathering: values[0] === true,
+      advancedMining: values[1] === true,
+      netheriteProgression: values[2] === true,
+      safeBuilding: values[3] === true,
+      portalIntelligence: values[4] === true,
+      endPursuit: values[5] === true,
+      stealthTracking: values[6] === true,
+      emergencyRecovery: values[7] === true,
+      cleanupPlacedBlocks: values[8] === true,
+      destroyBoats: values[9] === true,
+      taunts: values[10] === true,
+      chatPersonality: values[11] === true
+    });
+    player.sendMessage(`§aIntelligence saved. Safe building: ${saved.safeBuilding ? "§aEnabled" : "§cDisabled"} §7| Portals: ${saved.portalIntelligence ? "§aEnabled" : "§cDisabled"} §7| End pursuit: ${saved.endPursuit ? "§aEnabled" : "§cDisabled"}`);
+  }
+  openSoon(player, showMainMenu);
+}
+
+async function showPerformanceSettings(player) {
+  const config = getConfig();
+  const form = new ModalFormData()
+    .title("§l§bPERFORMANCE AND DEBUG")
+    .dropdown("Performance profile", PERFORMANCE_PROFILES, { defaultValueIndex: safeIndex(config.performanceProfile, PERFORMANCE_PROFILES, 1) })
+    .toggle("AI debug dashboard and action bar", { defaultValue: config.debugMode })
+    .toggle("Show route particles", { defaultValue: config.routeParticles })
+    .label("§7Low-End uses smaller scan and route budgets. Balanced is recommended. Maximum AI evaluates more alternatives. All profiles keep the same survival rules and placement safety.")
+    .label("§8Route particles are developer-only and may reduce FPS on mobile.")
+    .submitButton("Save Performance");
+
+  const values = controlValues(await showForm(form, player));
+  if (values && values.length >= 3) {
+    const saved = saveConfig({
+      performanceProfile: safeIndex(values[0], PERFORMANCE_PROFILES, config.performanceProfile),
+      debugMode: values[1] === true,
+      routeParticles: values[2] === true
+    });
+    player.sendMessage(`§aPerformance saved: §f${PERFORMANCE_PROFILES[saved.performanceProfile]} §7| route particles ${saved.routeParticles ? "on" : "off"}`);
+  }
+  openSoon(player, showMainMenu);
+}
+
+async function showStatus(player) {
+  const form = new ActionFormData()
+    .title("§l§6LIVE AI DASHBOARD")
+    .header("§cObserve → Remember → Plan → Act → Verify")
+    .label(getStatusText())
+    .divider()
+    .button("§6Refresh")
+    .button("§dDeveloper Tools")
+    .button("§7Back");
+  const response = await showForm(form, player);
+  if (!response || response.canceled) return;
+  if (response.selection === 0) openSoon(player, showStatus);
+  if (response.selection === 1) openSoon(player, showDeveloperTools);
+  if (response.selection === 2) openSoon(player, showMainMenu);
+}
+
+function hunterChoices() {
+  const hunters = getHunters()
+    .sort((a, b) => Number(a.getDynamicProperty("manhunt:squad_index") ?? 0) - Number(b.getDynamicProperty("manhunt:squad_index") ?? 0));
+  if (!hunters.length) return [{ label: "Hunter 1", squadIndex: 0 }];
+  return hunters.map((hunter, order) => {
+    const squadIndex = finiteInteger(hunter.getDynamicProperty("manhunt:squad_index"), 0, 3, order);
+    return { label: hunter.nameTag || `Hunter ${squadIndex + 1}`, squadIndex };
+  });
+}
+
+async function selectDeveloperHunter(player, action) {
+  const choices = hunterChoices();
+  const form = new ModalFormData()
+    .title("§l§dSELECT HUNTER")
+    .dropdown("Target hunter", choices.map((entry) => entry.label), { defaultValueIndex: 0 })
+    .submitButton("Continue");
+  const values = controlValues(await showForm(form, player));
+  if (!values) return;
+  const selectedPosition = finiteInteger(values[0], 0, Math.max(0, choices.length - 1), 0);
+  action(player, choices[selectedPosition]?.squadIndex ?? 0);
+  openSoon(player, showDeveloperTools);
+}
+
+async function showDeveloperTools(player) {
+  const active = isHuntActive();
+  const form = new ActionFormData()
+    .title("§l§dDEVELOPER TOOLS")
+    .header(active ? "§aRuntime controls" : "§eStart a hunt to use hunter controls")
+    .label("§7These tools are intended for testing route plans, crafting progression and failure recovery. They never edit world files outside the active addon state.")
+    .divider()
+    .button("§6Force Replan\n§7Abandon active route and choose another")
+    .button("§bReset Route Memory\n§7Clear falls, failed pillars and blacklists")
+    .button("§cReset Hunter\n§7Empty inventory and progression")
+    .button("§aTeleport Hunter for Test\n§7Place near you at a safe point")
+    .button("§eGive Test Resources\n§7Wood, blocks, iron, food and portal items")
+    .button("§5Pause / Resume Hunter AI")
+    .button("§dExport Debug Report to Chat")
+    .button("§7Back");
+  const response = await showForm(form, player);
+  if (!response || response.canceled) return;
+  if (!active && response.selection < 6) {
+    player.sendMessage("§eStart a hunt before using hunter-specific developer controls.");
+    openSoon(player, showMainMenu);
+    return;
+  }
+  if (response.selection === 0) openSoon(player, selectDeveloperHunter, forceHunterReplan);
+  if (response.selection === 1) openSoon(player, selectDeveloperHunter, resetHunterRouteMemory);
+  if (response.selection === 2) openSoon(player, selectDeveloperHunter, resetHunterForTesting);
+  if (response.selection === 3) openSoon(player, selectDeveloperHunter, teleportHunterForTesting);
+  if (response.selection === 4) openSoon(player, selectDeveloperHunter, giveHunterTestResources);
+  if (response.selection === 5) openSoon(player, selectDeveloperHunter, toggleHunterPause);
+  if (response.selection === 6) {
+    exportDebugReport(player);
+    openSoon(player, showDeveloperTools);
+  }
+  if (response.selection === 7) openSoon(player, showMainMenu);
+}
+
+async function confirmStop(player) {
+  const form = new MessageFormData()
+    .title("Stop Manhunt?")
+    .body("This removes every active hunter, route node and current hunt state.")
+    .button1("Stop Hunt")
+    .button2("Cancel");
+  const response = await showForm(form, player);
+  if (!response || response.canceled) return;
+  if (response.selection === 0) stopHunt(player);
+  else openSoon(player, showMainMenu);
+}
+
+async function confirmResetSettings(player) {
+  const form = new MessageFormData()
+    .title("Reset all settings?")
+    .body(`This restores the current v${VERSION} default configuration. Active hunts are not changed until restarted.`)
+    .button1("Reset Settings")
+    .button2("Cancel");
+  const response = await showForm(form, player);
+  if (!response || response.canceled) return;
+  if (response.selection === 0) {
+    const saved = resetConfig();
+    player.sendMessage(`§aSettings reset. Default mode: ${WIN_MODES[saved.winMode]}, ${saved.hunterCount} hunter.`);
+  }
+  openSoon(player, showMainMenu);
+}
+
+async function showHelp(player) {
+  const form = new ActionFormData()
+    .title(`§l§4MANHUNT AI BOT v${VERSION}`)
+    .header("§6One coordinated brain")
+    .label("§7Every hunter observes the world, remembers failures and successful paths, scores goals, creates a concrete action plan, performs one verified step, then checks whether it worked. Advanced-action errors fall back to native chase instead of shutting the AI down.")
+    .divider()
+    .header("§bRoute memory and vertical pursuit")
+    .label("§7The hunter remembers falls, failed pillars, water traps and its own bridges. Vertical priority is natural terrain, existing routes, diagonal stairs, spiral stairs, pillar breaking, then an offset pillar as a last resort. It calculates the required block reserve before climbing.")
+    .divider()
+    .header("§2Mining and crafting")
+    .label("§7Logs become planks, planks become table and sticks, then tools. Valuable ores require the correct pickaxe. The planner reserves iron for pickaxe, shield and bucket before optional armor. It can craft bow, arrows, boat, flint and steel, cooked food and golden apples.")
+    .divider()
+    .header("§cCombat and anti-cheese")
+    .label("§7Combat uses native melee pursuit with line-of-sight checks, axe against shields, timed shield windows, healing retreats, hazard sidesteps and bow shots. Towering, tunnels, bridges, boats, trees, cobwebs, cliffs and dimension changes each trigger a specific counter-plan.")
+    .divider()
+    .header("§5Portals, squads and the End")
+    .label("§7Hunters share runner, resource, bridge, danger and portal memory. A hunter uses remembered portals and can construct an obsidian frame when resources are available. In End pursuit mode the squad retraces your overworld trail toward strongholds, uses real end portals and destroys placed end crystals mid-fight.")
+    .divider()
+    .header("§dNetherite and personality")
+    .label("§7With a diamond pickaxe the squad mines ancient debris in the Nether, smelts scrap, forges ingots and reforges tools and armor to netherite. Hunters also talk like players: contextual greetings, milestone callouts and banter, all cooldown-gated so chat stays natural.")
+    .button("§7Back");
+  await showForm(form, player);
+  openSoon(player, showMainMenu);
 }

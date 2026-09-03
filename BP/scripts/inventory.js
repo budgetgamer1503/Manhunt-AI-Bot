@@ -1,957 +1,519 @@
-/*
- * (c) 2026 BUDGETGAMER1503. All Rights Reserved.
- * Unauthorized reproduction or distribution is strictly prohibited.
- */
+import { EquipmentSlot, ItemStack, system } from "@minecraft/server";
+import { BUILDING_ITEMS, FOOD_HEAL, FOOD_ITEMS } from "./constants.js";
+import { isEntityValid, safeDynamicGet, safeDynamicSet } from "./utils.js";
 
-import { system, ItemStack, EquipmentSlot } from "@minecraft/server";
-import { DEFAULT_CREATOR_KIT_ID, getCreatorKitById, resolveCreatorKit } from "./kits.js";
-export const WEAPON_DAMAGE = {
-    "minecraft:wooden_sword": 4,
-    "minecraft:stone_sword": 5,
-    "minecraft:iron_sword": 6,
-    "minecraft:diamond_sword": 7,
-    "minecraft:netherite_sword": 8,
-    "minecraft:wooden_axe": 3,
-    "minecraft:stone_axe": 4,
-    "minecraft:iron_axe": 5,
-    "minecraft:diamond_axe": 6
-};
-const ARMOR_VALUES = {
-    Head: {
-        "minecraft:leather_helmet": 1,
-        "minecraft:chainmail_helmet": 1.5,
-        "minecraft:iron_helmet": 2,
-        "minecraft:diamond_helmet": 3,
-        "minecraft:netherite_helmet": 4
-    },
-    Chest: {
-        "minecraft:leather_chestplate": 3,
-        "minecraft:chainmail_chestplate": 4.5,
-        "minecraft:iron_chestplate": 6,
-        "minecraft:diamond_chestplate": 8,
-        "minecraft:netherite_chestplate": 9
-    },
-    Legs: {
-        "minecraft:leather_leggings": 2,
-        "minecraft:chainmail_leggings": 3.5,
-        "minecraft:iron_leggings": 5,
-        "minecraft:diamond_leggings": 6,
-        "minecraft:netherite_leggings": 7
-    },
-    Feet: {
-        "minecraft:leather_boots": 1,
-        "minecraft:chainmail_boots": 1.5,
-        "minecraft:iron_boots": 2,
-        "minecraft:diamond_boots": 3,
-        "minecraft:netherite_boots": 4
-    }
-};
-const FOOD_VALUES = {
-    "minecraft:cooked_beef": { hunger: 8, saturation: 12.8 },
-    "minecraft:cooked_porkchop": { hunger: 8, saturation: 12.8 },
-    "minecraft:cooked_mutton": { hunger: 6, saturation: 9.6 },
-    "minecraft:cooked_chicken": { hunger: 6, saturation: 7.2 },
-    "minecraft:bread": { hunger: 5, saturation: 6.0 },
-    "minecraft:apple": { hunger: 4, saturation: 2.4 },
-    "minecraft:cooked_salmon": { hunger: 6, saturation: 9.6 },
-    "minecraft:cooked_cod": { hunger: 5, saturation: 6.0 },
-    "minecraft:golden_apple": { hunger: 4, saturation: 9.6 },
-    "minecraft:dried_kelp": { hunger: 1, saturation: 0.6 }
-};
-const RECIPES = [
-    {
-        name: "oak_planks",
-        inputs: [{ typeId: "minecraft:oak_log", amount: 1 }],
-        output: { typeId: "minecraft:oak_planks", amount: 4 }
-    },
-    {
-        name: "sticks",
-        inputs: [{ typeId: "minecraft:oak_planks", amount: 2 }],
-        output: { typeId: "minecraft:stick", amount: 4 }
-    },
-    {
-        name: "wooden_pickaxe",
-        inputs: [
-            { typeId: "minecraft:oak_planks", amount: 3 },
-            { typeId: "minecraft:stick", amount: 2 }
-        ],
-        output: { typeId: "minecraft:wooden_pickaxe", amount: 1 }
-    },
-    {
-        name: "wooden_sword",
-        inputs: [
-            { typeId: "minecraft:oak_planks", amount: 2 },
-            { typeId: "minecraft:stick", amount: 1 }
-        ],
-        output: { typeId: "minecraft:wooden_sword", amount: 1 }
-    },
-    {
-        name: "wooden_axe",
-        inputs: [
-            { typeId: "minecraft:oak_planks", amount: 3 },
-            { typeId: "minecraft:stick", amount: 2 }
-        ],
-        output: { typeId: "minecraft:wooden_axe", amount: 1 }
-    },
-    {
-        name: "stone_pickaxe",
-        inputs: [
-            { typeId: "minecraft:cobblestone", amount: 3 },
-            { typeId: "minecraft:stick", amount: 2 }
-        ],
-        output: { typeId: "minecraft:stone_pickaxe", amount: 1 }
-    },
-    {
-        name: "stone_sword",
-        inputs: [
-            { typeId: "minecraft:cobblestone", amount: 2 },
-            { typeId: "minecraft:stick", amount: 1 }
-        ],
-        output: { typeId: "minecraft:stone_sword", amount: 1 }
-    },
-    {
-        name: "stone_axe",
-        inputs: [
-            { typeId: "minecraft:cobblestone", amount: 3 },
-            { typeId: "minecraft:stick", amount: 2 }
-        ],
-        output: { typeId: "minecraft:stone_axe", amount: 1 }
-    },
-    {
-        name: "iron_pickaxe",
-        inputs: [
-            { typeId: "minecraft:iron_ingot", amount: 3 },
-            { typeId: "minecraft:stick", amount: 2 }
-        ],
-        output: { typeId: "minecraft:iron_pickaxe", amount: 1 }
-    },
-    {
-        name: "iron_sword",
-        inputs: [
-            { typeId: "minecraft:iron_ingot", amount: 2 },
-            { typeId: "minecraft:stick", amount: 1 }
-        ],
-        output: { typeId: "minecraft:iron_sword", amount: 1 }
-    },
-    {
-        name: "iron_helmet",
-        inputs: [{ typeId: "minecraft:iron_ingot", amount: 5 }],
-        output: { typeId: "minecraft:iron_helmet", amount: 1 }
-    },
-    {
-        name: "iron_chestplate",
-        inputs: [{ typeId: "minecraft:iron_ingot", amount: 8 }],
-        output: { typeId: "minecraft:iron_chestplate", amount: 1 }
-    },
-    {
-        name: "iron_leggings",
-        inputs: [{ typeId: "minecraft:iron_ingot", amount: 7 }],
-        output: { typeId: "minecraft:iron_leggings", amount: 1 }
-    },
-    {
-        name: "iron_boots",
-        inputs: [{ typeId: "minecraft:iron_ingot", amount: 4 }],
-        output: { typeId: "minecraft:iron_boots", amount: 1 }
-    },
-    {
-        name: "shield",
-        inputs: [
-            { typeId: "minecraft:oak_planks", amount: 6 },
-            { typeId: "minecraft:iron_ingot", amount: 1 }
-        ],
-        output: { typeId: "minecraft:shield", amount: 1 }
-    },
-    {
-        name: "crafting_table",
-        inputs: [{ typeId: "minecraft:oak_planks", amount: 4 }],
-        output: { typeId: "minecraft:crafting_table", amount: 1 }
-    },
-    {
-        name: "furnace",
-        inputs: [{ typeId: "minecraft:cobblestone", amount: 8 }],
-        output: { typeId: "minecraft:furnace", amount: 1 }
-    }
-];
-const CRAFT_PRIORITY = [
-    "oak_planks", "sticks",
-    "wooden_pickaxe", "wooden_sword",
-    "stone_pickaxe", "stone_sword", "stone_axe",
-    "iron_sword", "iron_pickaxe",
-    "iron_helmet", "iron_chestplate", "iron_leggings", "iron_boots",
-    "shield"
-];
-export const MINEABLE_BLOCKS = {
-    "minecraft:oak_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:birch_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:spruce_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:jungle_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:acacia_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:dark_oak_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:mangrove_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:cherry_log": { drop: "minecraft:oak_log", amount: 1, baseTicks: 20 },
-    "minecraft:stone": { drop: "minecraft:cobblestone", amount: 1, baseTicks: 30 },
-    "minecraft:cobblestone": { drop: "minecraft:cobblestone", amount: 1, baseTicks: 30 },
-    "minecraft:iron_ore": { drop: "minecraft:raw_iron", amount: 1, baseTicks: 40 },
-    "minecraft:deepslate_iron_ore": { drop: "minecraft:raw_iron", amount: 1, baseTicks: 45 },
-    "minecraft:coal_ore": { drop: "minecraft:coal", amount: 1, baseTicks: 30 },
-    "minecraft:dirt": { drop: "minecraft:dirt", amount: 1, baseTicks: 8 },
-    "minecraft:grass_block": { drop: "minecraft:dirt", amount: 1, baseTicks: 10 },
-    "minecraft:gravel": { drop: "minecraft:gravel", amount: 1, baseTicks: 10 },
-    "minecraft:sand": { drop: "minecraft:sand", amount: 1, baseTicks: 8 }
-};
-const GATHER_TARGETS = [
-    "minecraft:dirt", "minecraft:grass_block", "minecraft:gravel", "minecraft:sand", "minecraft:stone",
-    "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log",
-    "minecraft:jungle_log", "minecraft:acacia_log", "minecraft:dark_oak_log",
-    "minecraft:mangrove_log", "minecraft:cherry_log"
-];
-const WEAPON_PRIORITY = [
-    "minecraft:netherite_sword", "minecraft:diamond_sword", "minecraft:iron_sword",
-    "minecraft:stone_sword", "minecraft:wooden_sword",
-    "minecraft:diamond_axe", "minecraft:iron_axe", "minecraft:stone_axe", "minecraft:wooden_axe"
-];
-const PICKAXE_PRIORITY = [
-    "minecraft:netherite_pickaxe", "minecraft:diamond_pickaxe", "minecraft:iron_pickaxe",
-    "minecraft:stone_pickaxe", "minecraft:wooden_pickaxe"
-];
-const AXE_PRIORITY = [
-    "minecraft:diamond_axe", "minecraft:iron_axe", "minecraft:stone_axe", "minecraft:wooden_axe"
-];
-const ARMOR_PRIORITY = {
-    Head: ["minecraft:netherite_helmet", "minecraft:diamond_helmet", "minecraft:iron_helmet", "minecraft:chainmail_helmet", "minecraft:leather_helmet"],
-    Chest: ["minecraft:netherite_chestplate", "minecraft:diamond_chestplate", "minecraft:iron_chestplate", "minecraft:chainmail_chestplate", "minecraft:leather_chestplate"],
-    Legs: ["minecraft:netherite_leggings", "minecraft:diamond_leggings", "minecraft:iron_leggings", "minecraft:chainmail_leggings", "minecraft:leather_leggings"],
-    Feet: ["minecraft:netherite_boots", "minecraft:diamond_boots", "minecraft:iron_boots", "minecraft:chainmail_boots", "minecraft:leather_boots"]
-};
-const BONUS_BLOCKS = [
-    "minecraft:cobblestone", "minecraft:stone", "minecraft:oak_planks", "minecraft:spruce_planks",
-    "minecraft:birch_planks", "minecraft:dirt", "minecraft:gravel", "minecraft:sand",
-    "minecraft:netherrack", "minecraft:cobbled_deepslate"
-];
-const BONUS_UTILITY_ITEMS = [
-    "minecraft:water_bucket", "minecraft:lava_bucket", "minecraft:bucket",
-    "minecraft:shield", "minecraft:red_bed", "minecraft:crafting_table",
-    "minecraft:furnace", "minecraft:coal", "minecraft:raw_iron", "minecraft:iron_ingot",
-    "minecraft:oak_log", "minecraft:spruce_log", "minecraft:birch_log",
-    "minecraft:jungle_log", "minecraft:acacia_log", "minecraft:dark_oak_log",
-    "minecraft:mangrove_log", "minecraft:cherry_log"
-];
-const BRIDGE_BLOCK_PRIORITY = [
-    "minecraft:cobblestone", "minecraft:dirt", "minecraft:oak_planks",
-    "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack",
-    "minecraft:gravel", "minecraft:sand"
-];
-const LAVA_SAFE_BLOCK_PRIORITY = [
-    "minecraft:cobblestone", "minecraft:stone", "minecraft:cobbled_deepslate", "minecraft:netherrack", "minecraft:dirt"
-];
-export const INVENTORY_MODES = [
-    { id: "starter", name: "Starter", description: "Spawn with the default hunter starter kit." },
-    { id: "player_share", name: "Player Share", description: "Mirror a filtered version of the player's inventory and equipment." },
-    { id: "creator_kit", name: "Creator Kit", description: "Use a creator-defined kit matched from the player's inventory." }
-];
-const ITEM_CAPS = {
-    "minecraft:bread": 16,
-    "minecraft:cooked_beef": 16,
-    "minecraft:cooked_porkchop": 16,
-    "minecraft:cooked_mutton": 16,
-    "minecraft:cooked_chicken": 16,
-    "minecraft:cooked_salmon": 16,
-    "minecraft:cooked_cod": 16,
-    "minecraft:apple": 12,
-    "minecraft:golden_apple": 3,
-    "minecraft:dried_kelp": 16,
-    "minecraft:cobblestone": 48,
-    "minecraft:stone": 48,
-    "minecraft:oak_planks": 48,
-    "minecraft:spruce_planks": 48,
-    "minecraft:birch_planks": 48,
-    "minecraft:dirt": 48,
-    "minecraft:gravel": 48,
-    "minecraft:sand": 48,
-    "minecraft:cobbled_deepslate": 48,
-    "minecraft:netherrack": 48,
-    "minecraft:coal": 16,
-    "minecraft:raw_iron": 16,
-    "minecraft:iron_ingot": 16,
-    "minecraft:torch": 16,
-    "minecraft:stick": 16,
-    "minecraft:oak_log": 16,
-    "minecraft:spruce_log": 16,
-    "minecraft:birch_log": 16,
-    "minecraft:jungle_log": 16,
-    "minecraft:acacia_log": 16,
-    "minecraft:dark_oak_log": 16,
-    "minecraft:mangrove_log": 16,
-    "minecraft:cherry_log": 16,
-    "minecraft:bow": 1,
-    "minecraft:crossbow": 1,
-    "minecraft:arrow": 64,
-    "minecraft:flint_and_steel": 1,
-    "minecraft:web": 64,
-    "minecraft:chainmail_helmet": 1,
-    "minecraft:chainmail_chestplate": 1,
-    "minecraft:chainmail_leggings": 1,
-    "minecraft:chainmail_boots": 1
-};
-const CREATOR_KIT_FALLBACK_ITEMS = {
-    "minecraft:bread": 10,
-    "minecraft:cobblestone": 32,
-    "minecraft:oak_planks": 16
-};
-function getItemCap(typeId) {
-    return ITEM_CAPS[typeId] ?? 1;
+const countCache = new Map();
+
+const EQUIPMENT_TRACK_KEYS = new Map([
+  [EquipmentSlot.Mainhand, "manhunt:equipped_mainhand"],
+  [EquipmentSlot.Offhand, "manhunt:equipped_offhand"],
+  [EquipmentSlot.Head, "manhunt:equipped_head"],
+  [EquipmentSlot.Chest, "manhunt:equipped_chest"],
+  [EquipmentSlot.Legs, "manhunt:equipped_legs"],
+  [EquipmentSlot.Feet, "manhunt:equipped_feet"]
+]);
+
+function trackedEquipment(entity, slot) {
+  const key = EQUIPMENT_TRACK_KEYS.get(slot);
+  if (!key) return undefined;
+  const value = safeDynamicGet(entity, key, "");
+  return typeof value === "string" && value ? value : undefined;
 }
-function cloneItemMap(itemMap = {}) {
-    return { ...itemMap };
+
+function entityKey(entity) {
+  try {
+    return entity.id;
+  } catch {
+    return undefined;
+  }
 }
-function mergeItemMaps(...maps) {
-    const merged = Object.create(null);
-    for (const source of maps) {
-        for (const [typeId, amount] of Object.entries(source ?? {})) {
-            if (!typeId || amount <= 0) continue;
-            merged[typeId] = (merged[typeId] ?? 0) + amount;
-        }
-    }
-    return merged;
+
+export function invalidateInventory(entity) {
+  const key = entityKey(entity);
+  if (key) countCache.delete(key);
 }
-function setItemCount(target, typeId, amount) {
-    if (!typeId || amount <= 0) return;
-    target[typeId] = Math.max(target[typeId] ?? 0, amount);
+
+export function getContainer(entity) {
+  if (!isEntityValid(entity)) return undefined;
+  try {
+    return entity.getComponent("minecraft:inventory")?.container;
+  } catch {
+    return undefined;
+  }
 }
-function addCappedItem(target, typeId, amount) {
-    if (!typeId || amount <= 0) return;
-    target[typeId] = Math.min(getItemCap(typeId), (target[typeId] ?? 0) + amount);
-}
-function normalizeItemMap(itemMap = {}) {
-    const normalized = Object.create(null);
-    for (const [typeId, amount] of Object.entries(itemMap)) {
-        if (!typeId || amount <= 0) continue;
-        normalized[typeId] = Math.min(getItemCap(typeId), amount);
-    }
-    return normalized;
-}
-export function getDefaultInventoryModeConfig(config = {}) {
-    return {
-        inventoryMode: INVENTORY_MODES.some((mode) => mode.id === config.inventoryMode) ? config.inventoryMode : "starter",
-        creatorKitId: typeof config.creatorKitId === "string" && config.creatorKitId.length > 0 ? config.creatorKitId : DEFAULT_CREATOR_KIT_ID,
-        prepBehavior: config.prepBehavior === "hybrid" ? "hybrid" : "hybrid"
-    };
-}
-export function describeInventoryMode(modeId) {
-    return INVENTORY_MODES.find((mode) => mode.id === modeId)?.name ?? "Starter";
-}
-export function capturePlayerInventoryProfile(player) {
-    const rawItems = Object.create(null);
+
+function captureInventorySlots(entity) {
+  const container = getContainer(entity);
+  if (!container) return undefined;
+  const slots = [];
+  for (let slot = 0; slot < container.size; slot++) {
     try {
-        const inventory = player.getComponent("minecraft:inventory");
-        const container = inventory?.container;
-        if (container) {
-            for (let index = 0; index < container.size; index++) {
-                const stack = container.getItem(index);
-                if (stack) {
-                    rawItems[stack.typeId] = (rawItems[stack.typeId] ?? 0) + stack.amount;
-                }
-            }
-        }
-    } catch (_) { }
+      const item = container.getItem(slot);
+      slots.push(item?.clone?.() ?? item);
+    } catch {
+      slots.push(undefined);
+    }
+  }
+  return slots;
+}
+
+function restoreInventorySlots(entity, slots) {
+  const container = getContainer(entity);
+  if (!container || !Array.isArray(slots) || slots.length !== container.size) return false;
+  let success = true;
+  for (let slot = 0; slot < container.size; slot++) {
     try {
-        const equippable = player.getComponent("minecraft:equippable");
-        if (equippable) {
-            for (const slot of [
-                EquipmentSlot.Mainhand,
-                EquipmentSlot.Offhand,
-                EquipmentSlot.Head,
-                EquipmentSlot.Chest,
-                EquipmentSlot.Legs,
-                EquipmentSlot.Feet
-            ]) {
-                try {
-                    const item = equippable.getEquipment(slot);
-                    if (item) {
-                        rawItems[item.typeId] = (rawItems[item.typeId] ?? 0) + item.amount;
-                    }
-                } catch (_) { }
-            }
-        }
-    } catch (_) { }
-    return {
-        rawItems,
-        sharedItems: buildFilteredPlayerShareMap(rawItems),
-        resolvedCreatorKit: resolveCreatorKit(rawItems, DEFAULT_CREATOR_KIT_ID)
-    };
+      const item = slots[slot];
+      container.setItem(slot, item?.clone?.() ?? item);
+    } catch {
+      success = false;
+    }
+  }
+  invalidateInventory(entity);
+  return success;
 }
-export function buildFilteredPlayerShareMap(playerItems = {}) {
-    const desired = Object.create(null);
-    ensurePreferredToolInMap(desired, playerItems, WEAPON_PRIORITY);
-    ensurePreferredToolInMap(desired, playerItems, PICKAXE_PRIORITY);
-    ensurePreferredToolInMap(desired, playerItems, AXE_PRIORITY);
-    for (const items of Object.values(ARMOR_PRIORITY)) {
-        const armor = items.find((item) => (playerItems[item] ?? 0) > 0);
-        if (armor) setItemCount(desired, armor, 1);
+
+export function runInventoryTransaction(entity, operation) {
+  const snapshot = captureInventorySlots(entity);
+  if (!snapshot || typeof operation !== "function") return false;
+  try {
+    if (operation() === true) {
+      invalidateInventory(entity);
+      return true;
     }
-    const foodTypes = Object.keys(FOOD_VALUES)
-        .filter((item) => (playerItems[item] ?? 0) > 0)
-        .sort((a, b) => FOOD_VALUES[b].saturation - FOOD_VALUES[a].saturation);
-    let totalFood = 0;
-    for (const food of foodTypes) {
-        if (totalFood >= 16) break;
-        const addAmount = Math.min(playerItems[food], getItemCap(food), 16 - totalFood);
-        if (addAmount > 0) {
-            addCappedItem(desired, food, addAmount);
-            totalFood += addAmount;
-        }
-    }
-    for (const block of BONUS_BLOCKS) {
-        const count = playerItems[block] ?? 0;
-        if (count > 0) {
-            addCappedItem(desired, block, Math.min(count, getItemCap(block)));
-            break;
-        }
-    }
-    for (const item of BONUS_UTILITY_ITEMS) {
-        const count = playerItems[item] ?? 0;
-        if (count <= 0) continue;
-        addCappedItem(desired, item, Math.min(count, getItemCap(item)));
-    }
-    return normalizeItemMap(desired);
+  } catch {
+    // Restore the exact slot layout below.
+  }
+  restoreInventorySlots(entity, snapshot);
+  return false;
 }
-function ensurePreferredToolInMap(target, playerItems, priorityList) {
-    const tool = priorityList.find((item) => (playerItems[item] ?? 0) > 0);
-    if (tool) setItemCount(target, tool, 1);
+
+function runInventoryPairTransaction(source, target, operation) {
+  if (!isEntityValid(source) || !isEntityValid(target) || typeof operation !== "function") return false;
+  if (source.id === target.id) return runInventoryTransaction(source, operation);
+  const sourceSnapshot = captureInventorySlots(source);
+  const targetSnapshot = captureInventorySlots(target);
+  if (!sourceSnapshot || !targetSnapshot) return false;
+  try {
+    if (operation() === true) {
+      invalidateInventory(source);
+      invalidateInventory(target);
+      return true;
+    }
+  } catch {
+    // Restore both inventories below.
+  }
+  restoreInventorySlots(source, sourceSnapshot);
+  restoreInventorySlots(target, targetSnapshot);
+  return false;
 }
-export function buildInventoryModeItemMap(config = {}, profile = null) {
-    const modeConfig = getDefaultInventoryModeConfig(config);
-    const rawItems = cloneItemMap(profile?.rawItems ?? {});
-    const sharedItems = cloneItemMap(profile?.sharedItems ?? buildFilteredPlayerShareMap(rawItems));
-    if (modeConfig.inventoryMode === "player_share") {
-        return {
-            itemMap: sharedItems,
-            resolvedKit: null
-        };
+
+function buildCounts(entity) {
+  const key = entityKey(entity);
+  const cached = key ? countCache.get(key) : undefined;
+  if (cached && cached.tick === system.currentTick) return cached.counts;
+
+  const counts = new Map();
+  const container = getContainer(entity);
+  if (container) {
+    for (let slot = 0; slot < container.size; slot++) {
+      let item;
+      try {
+        item = container.getItem(slot);
+      } catch {
+        continue;
+      }
+      if (!item) continue;
+      counts.set(item.typeId, (counts.get(item.typeId) ?? 0) + item.amount);
     }
-    if (modeConfig.inventoryMode === "creator_kit") {
-        const resolvedKit = resolveCreatorKit(rawItems, modeConfig.creatorKitId);
-        return {
-            itemMap: normalizeItemMap(mergeItemMaps(resolvedKit?.items ?? {}, CREATOR_KIT_FALLBACK_ITEMS)),
-            resolvedKit
-        };
-    }
-    return {
-        itemMap: normalizeItemMap({
-            "minecraft:wooden_sword": 1,
-            "minecraft:wooden_pickaxe": 1,
-            "minecraft:wooden_axe": 1,
-            "minecraft:bread": 10,
-            "minecraft:cobblestone": 32,
-            "minecraft:oak_planks": 16,
-            "minecraft:water_bucket": 1,
-            "minecraft:shield": 1,
-            "minecraft:red_bed": 1
-        }),
-        resolvedKit: null
-    };
+  }
+
+  if (key) {
+    if (countCache.size > 64) countCache.clear();
+    countCache.set(key, { tick: system.currentTick, counts });
+  }
+  return counts;
 }
-export class HunterInventory {
-    constructor() {
-        this.slots = new Array(27).fill(null);
-        this.itemCounts = Object.create(null);
-        this._tempEquipActive = false;
-        this._tempEquipEndTick = 0;
-        this.modeState = {
-            inventoryMode: "starter",
-            creatorKitId: DEFAULT_CREATOR_KIT_ID,
-            resolvedCreatorKitId: null,
-            prepBehavior: "hybrid"
-        };
+
+export function countItem(entity, typeId) {
+  return buildCounts(entity).get(typeId) ?? 0;
+}
+
+export function countAny(entity, typeIds) {
+  const set = typeIds instanceof Set ? typeIds : new Set(typeIds);
+  const counts = buildCounts(entity);
+  let total = 0;
+  for (const typeId of set) total += counts.get(typeId) ?? 0;
+  return total;
+}
+
+export function hasItem(entity, typeId, amount = 1) {
+  return countItem(entity, typeId) >= Math.max(1, Math.trunc(amount));
+}
+
+export function listInventory(entity) {
+  const result = {};
+  for (const [typeId, amount] of buildCounts(entity)) result[typeId] = amount;
+  return result;
+}
+
+export function addItem(entity, typeId, amount = 1) {
+  let remaining = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (!typeId || remaining <= 0 || !isEntityValid(entity)) return false;
+
+  while (remaining > 0) {
+    try {
+      // ItemStack clamps to the real maximum stack size. Subtract the amount
+      // actually represented by the stack, not the requested batch size. The
+      // old code silently added one boat/bucket/armor item while claiming that
+      // an entire multi-item request succeeded.
+      const stack = new ItemStack(typeId, Math.min(remaining, 255));
+      const offered = Math.max(1, Math.trunc(Number(stack.amount) || 1));
+      const leftover = entity.addItem(stack);
+      const left = leftover ? Math.max(0, Math.trunc(Number(leftover.amount) || 0)) : 0;
+      const inserted = Math.max(0, offered - left);
+      remaining -= inserted;
+      if (inserted <= 0 || leftover) {
+        invalidateInventory(entity);
+        return remaining <= 0;
+      }
+    } catch {
+      invalidateInventory(entity);
+      return false;
     }
-    _rebuildItemCounts() {
-        this.itemCounts = Object.create(null);
-        for (const slot of this.slots) {
-            if (slot && slot.amount > 0) {
-                this.itemCounts[slot.typeId] = (this.itemCounts[slot.typeId] ?? 0) + slot.amount;
-            }
-        }
+  }
+  invalidateInventory(entity);
+  return true;
+}
+
+export function removeItem(entity, typeId, amount = 1) {
+  const needed = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (needed <= 0) return true;
+  if (countItem(entity, typeId) < needed) return false;
+  const container = getContainer(entity);
+  if (!container) return false;
+
+  let remaining = needed;
+  for (let slot = 0; slot < container.size && remaining > 0; slot++) {
+    let item;
+    try {
+      item = container.getItem(slot);
+    } catch {
+      continue;
     }
-    _addCount(typeId, amount) {
-        if (!typeId || amount <= 0) return;
-        this.itemCounts[typeId] = (this.itemCounts[typeId] ?? 0) + amount;
+    if (!item || item.typeId !== typeId) continue;
+    try {
+      if (item.amount <= remaining) {
+        remaining -= item.amount;
+        container.setItem(slot, undefined);
+      } else {
+        const replacement = item.clone();
+        replacement.amount = item.amount - remaining;
+        container.setItem(slot, replacement);
+        remaining = 0;
+      }
+    } catch {
+      invalidateInventory(entity);
+      return false;
     }
-    _removeCount(typeId, amount) {
-        if (!typeId || amount <= 0) return;
-        const next = (this.itemCounts[typeId] ?? 0) - amount;
-        if (next > 0) this.itemCounts[typeId] = next;
-        else delete this.itemCounts[typeId];
+  }
+  invalidateInventory(entity);
+  return remaining === 0;
+}
+
+export function removeAny(entity, typeIds, amount = 1) {
+  const set = typeIds instanceof Set ? typeIds : new Set(typeIds);
+  const needed = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (needed <= 0) return true;
+  if (countAny(entity, set) < needed) return false;
+  const container = getContainer(entity);
+  if (!container) return false;
+
+  let remaining = needed;
+  for (let slot = 0; slot < container.size && remaining > 0; slot++) {
+    let item;
+    try {
+      item = container.getItem(slot);
+    } catch {
+      continue;
     }
-    clear() {
-        this.slots.fill(null);
-        this.itemCounts = Object.create(null);
-        this.resetTempEquip();
+    if (!item || !set.has(item.typeId)) continue;
+    try {
+      if (item.amount <= remaining) {
+        remaining -= item.amount;
+        container.setItem(slot, undefined);
+      } else {
+        const replacement = item.clone();
+        replacement.amount = item.amount - remaining;
+        container.setItem(slot, replacement);
+        remaining = 0;
+      }
+    } catch {
+      invalidateInventory(entity);
+      return false;
     }
-    addItem(typeId, amount = 1) {
-        for (let i = 0; i < this.slots.length; i++) {
-            if (this.slots[i] && this.slots[i].typeId === typeId) {
-                this.slots[i].amount += amount;
-                this._addCount(typeId, amount);
-                return true;
-            }
-        }
-        for (let i = 0; i < this.slots.length; i++) {
-            if (!this.slots[i]) {
-                this.slots[i] = { typeId, amount };
-                this._addCount(typeId, amount);
-                return true;
-            }
-        }
-        return false;
+  }
+  invalidateInventory(entity);
+  return remaining === 0;
+}
+
+export function clearInventory(entity) {
+  const container = getContainer(entity);
+  if (!container) return false;
+  for (let slot = 0; slot < container.size; slot++) {
+    try {
+      container.setItem(slot, undefined);
+    } catch {
+      // Continue clearing other slots.
     }
-    removeItem(typeId, amount = 1) {
-        for (let i = 0; i < this.slots.length; i++) {
-            if (this.slots[i] && this.slots[i].typeId === typeId) {
-                const removed = Math.min(amount, this.slots[i].amount);
-                this.slots[i].amount -= amount;
-                this._removeCount(typeId, removed);
-                if (this.slots[i].amount <= 0) {
-                    this.slots[i] = null;
-                }
-                return true;
-            }
-        }
-        return false;
+  }
+  invalidateInventory(entity);
+  return true;
+}
+
+function getEquippable(entity) {
+  if (!isEntityValid(entity)) return undefined;
+  try {
+    return entity.getComponent("minecraft:equippable");
+  } catch {
+    return undefined;
+  }
+}
+
+function equipmentMatches(equippable, slot, typeId) {
+  if (!equippable) return false;
+  try {
+    const current = equippable.getEquipment(slot);
+    return typeId ? current?.typeId === typeId : !current;
+  } catch {
+    return false;
+  }
+}
+
+export function setEquipment(entity, slot, typeId = undefined) {
+  if (!isEntityValid(entity)) return false;
+  const equippable = getEquippable(entity);
+  const stack = typeId ? new ItemStack(typeId, 1) : undefined;
+  let success = false;
+
+  if (equippable) {
+    try {
+      equippable.setEquipment(slot, stack);
+      success = equipmentMatches(equippable, slot, typeId);
+    } catch {
+      // Continue to the direct slot and command fallbacks.
     }
-    hasItem(typeId, amount = 1) {
-        return (this.itemCounts[typeId] ?? 0) >= amount;
+
+    // Some custom humanoid entities expose the slot but do not refresh the
+    // client attachable after setEquipment. Writing the ContainerSlot directly
+    // forces the equipment replication used by held items and armor.
+    if (!success) {
+      try {
+        const equipmentSlot = equippable.getEquipmentSlot(slot);
+        equipmentSlot.setItem(stack);
+        success = equipmentMatches(equippable, slot, typeId);
+      } catch {
+        // Command fallback below covers runtimes without writable slots.
+      }
     }
-    countItem(typeId) {
-        return this.itemCounts[typeId] ?? 0;
+  }
+
+  const slotNames = new Map([
+    [EquipmentSlot.Mainhand, "slot.weapon.mainhand"],
+    [EquipmentSlot.Offhand, "slot.weapon.offhand"],
+    [EquipmentSlot.Head, "slot.armor.head"],
+    [EquipmentSlot.Chest, "slot.armor.chest"],
+    [EquipmentSlot.Legs, "slot.armor.legs"],
+    [EquipmentSlot.Feet, "slot.armor.feet"]
+  ]);
+  const commandSlot = slotNames.get(slot);
+  if (commandSlot && !success) {
+    try {
+      const result = entity.runCommand(`replaceitem entity @s ${commandSlot} 0 ${typeId ?? "air"} 1`);
+      if (result?.successCount === undefined || result.successCount > 0) {
+        // Command success is authoritative even when the equipment component
+        // does not expose the changed slot until the following engine tick.
+        success = true;
+      }
+    } catch {
+      // Keep the verified API result if commands are unavailable.
     }
-    ensureAtLeast(typeId, amount = 1) {
-        const current = this.countItem(typeId);
-        if (current >= amount) return true;
-        return this.addItem(typeId, amount - current);
+  }
+
+  if (success) {
+    const trackKey = EQUIPMENT_TRACK_KEYS.get(slot);
+    if (trackKey) safeDynamicSet(entity, trackKey, typeId ?? "");
+  }
+  return success;
+}
+
+export function getEquipment(entity, slot) {
+  const equippable = getEquippable(entity);
+  if (!equippable) return undefined;
+  try {
+    return equippable.getEquipment(slot);
+  } catch {
+    return undefined;
+  }
+}
+
+export function equipMainhand(entity, typeId) {
+  return setEquipment(entity, EquipmentSlot.Mainhand, typeId);
+}
+
+export function equipOffhand(entity, typeId) {
+  return setEquipment(entity, EquipmentSlot.Offhand, typeId);
+}
+
+export function clearEquipment(entity) {
+  for (const slot of [
+    EquipmentSlot.Mainhand,
+    EquipmentSlot.Offhand,
+    EquipmentSlot.Head,
+    EquipmentSlot.Chest,
+    EquipmentSlot.Legs,
+    EquipmentSlot.Feet
+  ]) setEquipment(entity, slot, undefined);
+}
+
+export function clearHunterLoadout(entity) {
+  clearInventory(entity);
+  clearEquipment(entity);
+}
+
+export function getSelectedItem(player) {
+  const container = getContainer(player);
+  if (!container) return undefined;
+  try {
+    return container.getItem(player.selectedSlotIndex);
+  } catch {
+    return undefined;
+  }
+}
+
+export function getBestFood(entity) {
+  for (const typeId of FOOD_ITEMS) {
+    if (countItem(entity, typeId) > 0) return { typeId, heal: FOOD_HEAL[typeId] ?? 2 };
+  }
+  return undefined;
+}
+
+export function getBuildingItem(entity) {
+  for (const typeId of BUILDING_ITEMS) {
+    if (countItem(entity, typeId) > 0) return typeId;
+  }
+  return undefined;
+}
+
+export function consumeBuildingItem(entity) {
+  const typeId = getBuildingItem(entity);
+  if (!typeId) return undefined;
+  return removeItem(entity, typeId, 1) ? typeId : undefined;
+}
+
+export function takeInventorySnapshot(entity) {
+  return listInventory(entity);
+}
+
+export function restoreInventorySnapshot(entity, snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return;
+  for (const [typeId, amount] of Object.entries(snapshot)) addItem(entity, typeId, amount);
+}
+
+export function runnerHasShield(player) {
+  const offhand = getEquipment(player, EquipmentSlot.Offhand);
+  if (offhand?.typeId === "minecraft:shield") return true;
+  const selected = getSelectedItem(player);
+  return selected?.typeId === "minecraft:shield";
+}
+
+export function removeAnyDetailed(entity, typeIds, amount = 1) {
+  const set = typeIds instanceof Set ? typeIds : new Set(typeIds);
+  const needed = Math.max(0, Math.trunc(Number(amount) || 0));
+  if (needed <= 0) return {};
+  if (countAny(entity, set) < needed) return undefined;
+  const container = getContainer(entity);
+  if (!container) return undefined;
+  const removed = {};
+  let remaining = needed;
+  for (let slot = 0; slot < container.size && remaining > 0; slot++) {
+    let item;
+    try { item = container.getItem(slot); } catch { continue; }
+    if (!item || !set.has(item.typeId)) continue;
+    const taken = Math.min(item.amount, remaining);
+    try {
+      if (taken === item.amount) container.setItem(slot, undefined);
+      else {
+        const replacement = item.clone();
+        replacement.amount = item.amount - taken;
+        container.setItem(slot, replacement);
+      }
+    } catch {
+      invalidateInventory(entity);
+      for (const [typeId, count] of Object.entries(removed)) addItem(entity, typeId, count);
+      return undefined;
     }
-    getBestWeapon() {
-        let best = null;
-        let bestDmg = 0;
-        for (const slot of this.slots) {
-            if (slot && WEAPON_DAMAGE[slot.typeId] && WEAPON_DAMAGE[slot.typeId] > bestDmg) {
-                bestDmg = WEAPON_DAMAGE[slot.typeId];
-                best = slot.typeId;
-            }
-        }
-        return best;
+    removed[item.typeId] = (removed[item.typeId] ?? 0) + taken;
+    remaining -= taken;
+  }
+  invalidateInventory(entity);
+  return remaining === 0 ? removed : undefined;
+}
+
+export function transferAny(source, target, typeIds, amount = 1) {
+  const requested = Math.max(0, Math.trunc(Number(amount) || 0));
+  let transferred = 0;
+  const success = runInventoryPairTransaction(source, target, () => {
+    const removed = removeAnyDetailed(source, typeIds, requested);
+    if (!removed) return false;
+    for (const [typeId, count] of Object.entries(removed)) {
+      if (!addItem(target, typeId, count)) return false;
+      transferred += count;
     }
-    getBestArmor(slotName) {
-        const map = ARMOR_VALUES[slotName];
-        if (!map) return null;
-        let best = null;
-        let bestVal = 0;
-        for (const slot of this.slots) {
-            if (slot && map[slot.typeId] && map[slot.typeId] > bestVal) {
-                bestVal = map[slot.typeId];
-                best = slot.typeId;
-            }
-        }
-        return best;
-    }
-    getBestFood() {
-        let best = null;
-        let bestSat = 0;
-        for (const slot of this.slots) {
-            if (slot && FOOD_VALUES[slot.typeId] && FOOD_VALUES[slot.typeId].saturation > bestSat) {
-                bestSat = FOOD_VALUES[slot.typeId].saturation;
-                best = slot.typeId;
-            }
-        }
-        return best;
-    }
-    getFoodHunger(typeId) {
-        return FOOD_VALUES[typeId]?.hunger ?? 0;
-    }
-    getBridgeBlock() {
-        for (const b of BRIDGE_BLOCK_PRIORITY) {
-            if (this.hasItem(b)) return b;
-        }
-        return null;
-    }
-    getLavaSafeBlock() {
-        for (const b of LAVA_SAFE_BLOCK_PRIORITY) {
-            if (this.hasItem(b)) return b;
-        }
-        return this.getBridgeBlock();
-    }
-    getBestPickaxe() {
-        const picks = ["minecraft:diamond_pickaxe", "minecraft:iron_pickaxe", "minecraft:stone_pickaxe", "minecraft:wooden_pickaxe"];
-        for (const p of picks) {
-            if (this.hasItem(p)) return p;
-        }
-        return null;
-    }
-    getBestAxe() {
-        const axes = ["minecraft:diamond_axe", "minecraft:iron_axe", "minecraft:stone_axe", "minecraft:wooden_axe"];
-        for (const a of axes) {
-            if (this.hasItem(a)) return a;
-        }
-        return null;
-    }
-    hasWaterBucket() {
-        return this.hasItem("minecraft:water_bucket");
-    }
-    hasShield() {
-        return this.hasItem("minecraft:shield");
-    }
-    hasGoodGear() {
-        const sword = this.hasItem("minecraft:stone_sword") || this.hasItem("minecraft:iron_sword");
-        const pick = this.hasItem("minecraft:stone_pickaxe") || this.hasItem("minecraft:iron_pickaxe");
-        return sword && pick;
-    }
-    getBridgeBlockCount() {
-        const block = this.getBridgeBlock();
-        return block ? this.countItem(block) : 0;
-    }
-    clone() {
-        const copy = new HunterInventory();
-        copy.slots = this.slots.map((slot) => slot ? { ...slot } : null);
-        copy._rebuildItemCounts();
-        copy._tempEquipActive = false;
-        copy._tempEquipEndTick = 0;
-        copy.modeState = { ...this.modeState };
-        return copy;
-    }
-    toSnapshot() {
-        return {
-            slots: this.slots.map((slot) => slot ? { ...slot } : null),
-            modeState: { ...this.modeState }
-        };
-    }
-    static fromSnapshot(snapshot) {
-        const inventory = new HunterInventory();
-        if (snapshot?.slots?.length) {
-            inventory.slots = snapshot.slots.map((slot) => slot ? { ...slot } : null);
-            inventory._rebuildItemCounts();
-        }
-        inventory._tempEquipActive = false;
-        inventory._tempEquipEndTick = 0;
-        inventory.modeState = {
-            ...inventory.modeState,
-            ...(snapshot?.modeState ?? {})
-        };
-        return inventory;
-    }
-    setModeState(config = {}, resolvedKit = null) {
-        const normalized = getDefaultInventoryModeConfig(config);
-        this.modeState = {
-            inventoryMode: normalized.inventoryMode,
-            creatorKitId: normalized.creatorKitId,
-            resolvedCreatorKitId: resolvedKit?.id ?? (normalized.creatorKitId !== DEFAULT_CREATOR_KIT_ID ? normalized.creatorKitId : null),
-            prepBehavior: normalized.prepBehavior
-        };
-    }
-    initializeForConfig(config = {}, profile = null) {
-        const { itemMap, resolvedKit } = buildInventoryModeItemMap(config, profile);
-        this.clear();
-        this.setModeState(config, resolvedKit);
-        this.applyItemMap(itemMap, { replaceExisting: false });
-        return { itemMap, resolvedKit };
-    }
-    refreshForConfig(config = {}, profile = null, options = {}) {
-        const { itemMap, resolvedKit } = buildInventoryModeItemMap(config, profile);
-        const replaceExisting = !!options.replaceExisting;
-        const preserveUpgrades = options.preserveUpgrades !== false;
-        this.setModeState(config, resolvedKit);
-        this.applyItemMap(itemMap, { replaceExisting, preserveUpgrades });
-        return { itemMap, resolvedKit };
-    }
-    applyItemMap(itemMap = {}, options = {}) {
-        const normalized = normalizeItemMap(itemMap);
-        if (options.replaceExisting) {
-            const keptSlots = options.preserveUpgrades ? this.buildUpgradePreservationMap(normalized) : Object.create(null);
-            this.clear();
-            for (const [typeId, amount] of Object.entries(keptSlots)) {
-                this.addItem(typeId, amount);
-            }
-        }
-        for (const [typeId, amount] of Object.entries(normalized)) {
-            this.ensureAtLeast(typeId, amount);
-        }
-    }
-    buildUpgradePreservationMap(targetMap = {}) {
-        const preserved = Object.create(null);
-        const keepByPriority = (priorityList) => {
-            const existing = priorityList.find((item) => this.countItem(item) > 0);
-            const incoming = priorityList.find((item) => (targetMap[item] ?? 0) > 0);
-            if (!existing) return;
-            if (!incoming || priorityList.indexOf(existing) < priorityList.indexOf(incoming)) {
-                preserved[existing] = 1;
-            }
-        };
-        keepByPriority(WEAPON_PRIORITY);
-        keepByPriority(PICKAXE_PRIORITY);
-        keepByPriority(AXE_PRIORITY);
-        for (const items of Object.values(ARMOR_PRIORITY)) {
-            const existing = items.find((item) => this.countItem(item) > 0);
-            const incoming = items.find((item) => (targetMap[item] ?? 0) > 0);
-            if (existing && (!incoming || items.indexOf(existing) < items.indexOf(incoming))) {
-                preserved[existing] = 1;
-            }
-        }
-        if (this.hasItem("minecraft:shield")) {
-            preserved["minecraft:shield"] = 1;
-        }
-        return preserved;
-    }
-    getPreferredMainhandItem() {
-        if (this.hasItem("minecraft:arrow")) {
-            if (this.hasItem("minecraft:bow")) return "minecraft:bow";
-            if (this.hasItem("minecraft:crossbow")) return "minecraft:crossbow";
-        }
-        return this.getBestWeapon() || this.getBestAxe() || this.getBestPickaxe() || this.getBestFood() || this.getBridgeBlock();
-    }
-    showItemInHand(hunter, itemTypeId, actionEvent, durationTicks) {
-        if (this._tempEquipActive) return;
-        try {
-            hunter.runCommand(`replaceitem entity @s slot.weapon.mainhand 0 ${itemTypeId} 1`);
-            if (actionEvent && actionEvent !== "none") {
-                try { hunter.triggerEvent(`manhunt:set_action_${actionEvent}`); } catch (_) { }
-            }
-            this._tempEquipActive = true;
-            this._tempEquipEndTick = system.currentTick + durationTicks;
-        } catch (_) { }
-    }
-    forceShowItemInHand(hunter, itemTypeId, actionEvent, durationTicks) {
-        try {
-            hunter.runCommand(`replaceitem entity @s slot.weapon.mainhand 0 ${itemTypeId} 1`);
-            if (actionEvent && actionEvent !== "none") {
-                try { hunter.triggerEvent(`manhunt:set_action_${actionEvent}`); } catch (_) { }
-            }
-            this._tempEquipActive = true;
-            this._tempEquipEndTick = system.currentTick + durationTicks;
-        } catch (_) { }
-    }
-    tickTempEquip(hunter) {
-        if (!this._tempEquipActive) return;
-        if (system.currentTick >= this._tempEquipEndTick) {
-            this.finishTempEquip(hunter);
-        }
-    }
-    finishTempEquip(hunter) {
-        this._tempEquipActive = false;
-        try { hunter.triggerEvent("manhunt:set_action_none"); } catch (_) { }
-        try {
-            const best = this.getPreferredMainhandItem();
-            if (best) {
-                hunter.runCommand(`replaceitem entity @s slot.weapon.mainhand 0 ${best} 1`);
-            }
-        } catch (_) { }
-    }
-    isTempEquipActive() {
-        return this._tempEquipActive;
-    }
-    resetTempEquip() {
-        this._tempEquipActive = false;
-        this._tempEquipEndTick = 0;
-    }
-    equipBest(hunter) {
-        if (this._tempEquipActive) return;
-        try {
-            const weapon = this.getPreferredMainhandItem();
-            if (weapon) {
-                try { hunter.runCommand(`replaceitem entity @s slot.weapon.mainhand 0 ${weapon} 1`); } catch (_) { }
-            }
-            const armorSlots = [
-                { id: "Head", slot: "slot.armor.head" },
-                { id: "Chest", slot: "slot.armor.chest" },
-                { id: "Legs", slot: "slot.armor.legs" },
-                { id: "Feet", slot: "slot.armor.feet" }
-            ];
-            for (const { id, slot } of armorSlots) {
-                const armor = this.getBestArmor(id);
-                if (armor) {
-                    try { hunter.runCommand(`replaceitem entity @s ${slot} 0 ${armor} 1`); } catch (_) { }
-                }
-            }
-            if (this.hasShield()) {
-                try { hunter.runCommand(`replaceitem entity @s slot.weapon.offhand 0 minecraft:shield 1`); } catch (_) { }
-            }
-        } catch (_) { }
-    }
-    equipWeapon(hunter) {
-        if (this._tempEquipActive) return;
-        try {
-            const weapon = this.getPreferredMainhandItem();
-            if (!weapon) return;
-            hunter.runCommand(`replaceitem entity @s slot.weapon.mainhand 0 ${weapon} 1`);
-        } catch (_) { }
-    }
-    attemptCraft() {
-        for (const recipeName of CRAFT_PRIORITY) {
-            const recipe = RECIPES.find(r => r.name === recipeName);
-            if (!recipe) continue;
-            if (this.hasItem(recipe.output.typeId) &&
-                !recipeName.includes("planks") &&
-                !recipeName.includes("sticks")) {
-                continue;
-            }
-            let canCraft = true;
-            for (const input of recipe.inputs) {
-                if (!this.hasItem(input.typeId, input.amount)) {
-                    canCraft = false;
-                    break;
-                }
-            }
-            if (canCraft) {
-                for (const input of recipe.inputs) {
-                    this.removeItem(input.typeId, input.amount);
-                }
-                this.addItem(recipe.output.typeId, recipe.output.amount);
-                return recipe.name;
-            }
-        }
-        return null;
-    }
-    attemptSmelt(currentTick, smeltTimers) {
-        const smeltTime = 200;
-        if (smeltTimers.has("iron")) {
-            const start = smeltTimers.get("iron");
-            if (currentTick - start >= smeltTime) {
-                this.addItem("minecraft:iron_ingot", 1);
-                smeltTimers.delete("iron");
-                return true;
-            }
-            return false;
-        }
-        if (this.hasItem("minecraft:raw_iron")) {
-            this.removeItem("minecraft:raw_iron", 1);
-            smeltTimers.set("iron", currentTick);
-            return true;
-        }
-        return false;
-    }
-    getMiningDuration(blockTypeId) {
-        const info = MINEABLE_BLOCKS[blockTypeId];
-        if (!info) return 0;
-        let duration = info.baseTicks;
-        if (blockTypeId.includes("log")) {
-            if (this.getBestAxe()) duration = Math.max(8, Math.floor(duration * 0.5));
-        } else if (blockTypeId.includes("stone") || blockTypeId.includes("cobble") ||
-            blockTypeId.includes("ore") || blockTypeId.includes("iron")) {
-            if (this.getBestPickaxe()) duration = Math.max(8, Math.floor(duration * 0.4));
-        }
-        return duration;
-    }
-    getMiningTool(blockTypeId) {
-        if (blockTypeId.includes("log")) return this.getBestAxe();
-        if (blockTypeId.includes("stone") || blockTypeId.includes("cobble") ||
-            blockTypeId.includes("ore") || blockTypeId.includes("iron")) {
-            return this.getBestPickaxe();
-        }
-        return this.getBestPickaxe() || this.getBestAxe();
-    }
-    getMiningDrop(blockTypeId) {
-        const info = MINEABLE_BLOCKS[blockTypeId];
-        if (!info) return null;
-        if (blockTypeId.includes("log")) {
-            return { typeId: "minecraft:oak_planks", amount: 4 };
-        }
-        if (blockTypeId === "minecraft:grass_block") {
-            return { typeId: "minecraft:dirt", amount: 1 };
-        }
-        return { typeId: info.drop, amount: info.amount };
-    }
-    findGatherTarget(hunter, searchRadius = 3) {
-        try {
-            const pos = hunter.location;
-            const dim = hunter.dimension;
-            const feetY = Math.floor(pos.y) - 1;
-            let closest = null;
-            let closestDist = Infinity;
-            for (let x = -searchRadius; x <= searchRadius; x++) {
-                for (let y = -1; y <= 2; y++) {
-                    for (let z = -searchRadius; z <= searchRadius; z++) {
-                        const bx = Math.floor(pos.x) + x;
-                        const by = Math.floor(pos.y) + y;
-                        const bz = Math.floor(pos.z) + z;
-                        if (by === feetY && bx === Math.floor(pos.x) && bz === Math.floor(pos.z)) continue;
-                        try {
-                            const block = dim.getBlock({ x: bx, y: by, z: bz });
-                            if (block && GATHER_TARGETS.includes(block.typeId)) {
-                                const dist = Math.abs(x) + Math.abs(y) + Math.abs(z);
-                                if (dist < closestDist) {
-                                    closestDist = dist;
-                                    closest = { block, typeId: block.typeId, pos: { x: bx, y: by, z: bz } };
-                                }
-                            }
-                        } catch (_) { }
-                    }
-                }
-            }
-            return closest;
-        } catch (_) { }
-        return null;
-    }
-    dropAll(dimension, location) {
-        this.resetTempEquip();
-        for (let i = 0; i < this.slots.length; i++) {
-            if (this.slots[i]) {
-                try {
-                    const item = new ItemStack(this.slots[i].typeId, this.slots[i].amount);
-                    dimension.spawnItem(item, {
-                        x: location.x + (Math.random() - 0.5) * 2,
-                        y: location.y + 0.5,
-                        z: location.z + (Math.random() - 0.5) * 2
-                    });
-                } catch (_) { }
-                this.slots[i] = null;
-            }
-        }
-    }
-    giveStarterKit() {
-        this.initializeForConfig({ inventoryMode: "starter", creatorKitId: DEFAULT_CREATOR_KIT_ID, prepBehavior: "hybrid" });
-    }
-    applyPlayerLoadoutBonus(playerItems = {}) {
-        this.syncProgressionFromPlayer(playerItems);
-    }
-    syncProgressionFromPlayer(playerItems = {}) {
-        this.ensurePreferredTool(playerItems, WEAPON_PRIORITY);
-        this.ensurePreferredTool(playerItems, PICKAXE_PRIORITY);
-        this.ensurePreferredTool(playerItems, AXE_PRIORITY);
-        for (const [slotName, items] of Object.entries(ARMOR_PRIORITY)) {
-            const armor = items.find((item) => (playerItems[item] ?? 0) > 0);
-            if (armor) {
-                this.ensureAtLeast(armor, 1);
-            }
-        }
-        const foodTypes = Object.keys(FOOD_VALUES)
-            .filter((item) => (playerItems[item] ?? 0) > 0)
-            .sort((a, b) => FOOD_VALUES[b].saturation - FOOD_VALUES[a].saturation);
-        let totalFood = 0;
-        for (const food of foodTypes) {
-            if (totalFood >= 16) break;
-            const addAmount = Math.min(playerItems[food], 16 - totalFood);
-            if (addAmount > 0) {
-                this.ensureAtLeast(food, addAmount);
-                totalFood += addAmount;
-            }
-        }
-        for (const block of BONUS_BLOCKS) {
-            const count = playerItems[block] ?? 0;
-            if (count > 0) {
-                this.ensureAtLeast(block, Math.min(count, 48));
-                break;
-            }
-        }
-        for (const item of BONUS_UTILITY_ITEMS) {
-            const count = playerItems[item] ?? 0;
-            if (count <= 0) continue;
-            const addAmount = item === "minecraft:coal" || item === "minecraft:raw_iron" || item === "minecraft:iron_ingot"
-                ? Math.min(count, 16)
-                : 1;
-            this.ensureAtLeast(item, addAmount);
-        }
-    }
-    ensurePreferredTool(playerItems, priorityList) {
-        const tool = priorityList.find((item) => (playerItems[item] ?? 0) > 0);
-        if (tool) {
-            this.ensureAtLeast(tool, 1);
-        }
-    }
+    return transferred === requested;
+  });
+  return success ? transferred : 0;
+}
+
+export function inventorySummary(entity, limit = 12) {
+  return Object.entries(listInventory(entity))
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(1, limit))
+    .map(([typeId, amount]) => `${typeId.replace("minecraft:", "")} x${amount}`)
+    .join(", ");
+}
+
+
+export function equipmentSnapshot(entity) {
+  const slots = [
+    ["mainhand", EquipmentSlot.Mainhand],
+    ["offhand", EquipmentSlot.Offhand],
+    ["head", EquipmentSlot.Head],
+    ["chest", EquipmentSlot.Chest],
+    ["legs", EquipmentSlot.Legs],
+    ["feet", EquipmentSlot.Feet]
+  ];
+  const result = {};
+  for (const [name, slot] of slots) {
+    const item = getEquipment(entity, slot);
+    result[name] = item?.typeId ?? trackedEquipment(entity, slot);
+  }
+  return result;
+}
+
+export function equipmentSummary(entity) {
+  const equipment = equipmentSnapshot(entity);
+  return Object.entries(equipment)
+    .map(([slot, typeId]) => `${slot}=${typeId ? typeId.replace("minecraft:", "") : "empty"}`)
+    .join(", ");
+}
+
+export function equipArmorSet(entity, tier = "iron") {
+  const prefix = ["diamond", "netherite"].includes(tier) ? tier : "iron";
+  return [
+    setEquipment(entity, EquipmentSlot.Head, `minecraft:${prefix}_helmet`),
+    setEquipment(entity, EquipmentSlot.Chest, `minecraft:${prefix}_chestplate`),
+    setEquipment(entity, EquipmentSlot.Legs, `minecraft:${prefix}_leggings`),
+    setEquipment(entity, EquipmentSlot.Feet, `minecraft:${prefix}_boots`)
+  ].some(Boolean);
 }

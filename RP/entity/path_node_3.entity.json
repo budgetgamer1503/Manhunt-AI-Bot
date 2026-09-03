@@ -1,0 +1,20 @@
+{
+  "format_version": "1.21.40",
+  "minecraft:client_entity": {
+    "description": {
+      "identifier": "manhunt:path_node_3",
+      "materials": {
+        "default": "entity_alphatest"
+      },
+      "textures": {
+        "default": "textures/entity/hunter/armor_empty"
+      },
+      "geometry": {
+        "default": "geometry.manhunt.path_node"
+      },
+      "render_controllers": [
+        "controller.render.manhunt_path_node"
+      ]
+    }
+  }
+}
